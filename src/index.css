@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+input, select, textarea {
+  touch-action: manipulation;
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #a0aec0;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: #edf2f7;
+}

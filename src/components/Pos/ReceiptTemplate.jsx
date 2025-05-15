@@ -2,7 +2,6 @@ import React, { useRef, memo } from 'react';
 
 const ReceiptTemplate = ({ order, onPrint }) => {
   const printRef = useRef();
-
   const handlePrint = () => {
     const content = printRef.current;
     const printWindow = window.open('', '_blank');
@@ -100,7 +99,7 @@ const ReceiptTemplate = ({ order, onPrint }) => {
           <div className="divider"></div>
           {order.cart.map((item, index) => (
             <div key={index} className="item-row">
-              <div className="item-name">{item.name}</div>
+              <div className="item-name">{item.itemName}</div>
               <div className="item-qty">{item.qty}</div>
               <div className="item-price">{item.amount.toFixed(2)}</div>
             </div>
