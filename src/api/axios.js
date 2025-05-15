@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const axiosInstance = axios.create({
-  baseURL: "https://pos-node-npzg.onrender.com/api",
+  baseURL: "http://localhost:4444/api",
   headers: {
     'Content-Type': 'application/json',
   },
