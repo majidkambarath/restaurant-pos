@@ -1,14 +1,16 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import Pos from './pos'
-function App() {
-  const [count, setCount] = useState(0)
+import React from 'react'
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import UserRouter from './routers/index'
 
+function App() {
   return (
     <>
-    <Pos/>
+    <BrowserRouter>
+       <Routes>
+          <Route path={"/*"} element={<UserRouter />} />
+        </Routes>
+      </BrowserRouter>
+     
     </>
   )
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import ReceiptTemplate from "./components/Pos/ReceiptTemplate";
-import axios from "./api/axios";
+import ReceiptTemplate from "./ReceiptTemplate";
+import axios from "../../api/axios";
 
 const EnhancedPOSSystemWithReceipt = () => {
   const [formData, setFormData] = useState({
@@ -15,18 +15,24 @@ const EnhancedPOSSystemWithReceipt = () => {
     tableNo: "",
     remarks: "",
     total: 0,
-    status: "Dine In", // Maps to option: 2
+    status: "Dine-In", // Maps to option: 2
     prefix: "ORD",
     eDate: "",
     time: "",
     holdedOrder: "0",
   });
-
+  const [restaurantSettings, setRestaurantSettings] = useState({
+    name: localStorage.getItem("restaurantName") || "Restaurant",
+    trn: localStorage.getItem("restaurantTRN") || "",
+    phone: localStorage.getItem("restaurantPhone") || "",
+    address: localStorage.getItem("restaurantAddress") || "",
+  });
   const [cart, setCart] = useState([]);
   const [currentQty, setCurrentQty] = useState("1");
   const [currentItem, setCurrentItem] = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
   const [showTableModal, setShowTableModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -46,7 +52,7 @@ const EnhancedPOSSystemWithReceipt = () => {
   // Function to generate a random customer ID
   const generateRandomCustomerId = () => {
     const randomId = Math.floor(10000 + Math.random() * 90000); // 5-digit number
-    setFormData(prev => ({ ...prev, custId: randomId.toString() }));
+    setFormData((prev) => ({ ...prev, custId: randomId.toString() }));
   };
 
   // Fetch initial data
@@ -137,6 +143,20 @@ const EnhancedPOSSystemWithReceipt = () => {
   const handleInputChange = useCallback((field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  // Handle settings changes
+  const handleSettingsChange = useCallback((field, value) => {
+    setRestaurantSettings((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  // Save settings to local storage
+  const saveSettings = useCallback(() => {
+    localStorage.setItem("restaurantName", restaurantSettings.name);
+    localStorage.setItem("restaurantTRN", restaurantSettings.trn);
+    localStorage.setItem("restaurantPhone", restaurantSettings.phone);
+    localStorage.setItem("restaurantAddress", restaurantSettings.address);
+    setShowSettingsModal(false);
+  }, [restaurantSettings]);
 
   // Add item to cart
   const addToCart = useCallback(
@@ -249,7 +269,7 @@ const EnhancedPOSSystemWithReceipt = () => {
   const clearAllFields = useCallback(() => {
     // Generate a new random customer ID
     const randomId = Math.floor(10000 + Math.random() * 90000);
-    
+
     setFormData((prev) => ({
       ...prev,
       custId: randomId.toString(),
@@ -262,9 +282,9 @@ const EnhancedPOSSystemWithReceipt = () => {
       tableNo: "",
       remarks: "",
       total: 0,
-      status: "Dine In",
+      status: "Dine-In",
     }));
-    
+
     clearCart();
     setCurrentQty("1");
     setCurrentItem(null);
@@ -272,9 +292,10 @@ const EnhancedPOSSystemWithReceipt = () => {
 
   // Select table
   const selectTable = useCallback((table) => {
+    console.log(table)
     setFormData((prev) => ({
       ...prev,
-      tableId: table.Id,
+      tableId: table.tableId,
       tableNo: table.Code,
       selectedSeats: table.Capacity,
     }));
@@ -328,7 +349,7 @@ const EnhancedPOSSystemWithReceipt = () => {
       }
 
       const orderTypeMap = {
-        "Dine In": 2,
+        "Dine-In": 2,
         Takeaway: 3,
         Delivery: 1,
       };
@@ -373,7 +394,7 @@ const EnhancedPOSSystemWithReceipt = () => {
         setCart([]);
         // Generate a new random customer ID
         const randomId = Math.floor(10000 + Math.random() * 90000);
-        
+
         setFormData((prev) => ({
           ...prev,
           orderNo: String(parseInt(prev.orderNo) + 1),
@@ -387,7 +408,7 @@ const EnhancedPOSSystemWithReceipt = () => {
           tableNo: "",
           remarks: "",
           total: 0,
-          status: "Dine In",
+          status: "Dine-In",
           eDate: formatDate(new Date()),
           time: formatTime(new Date()),
           holdedOrder: "0",
@@ -451,7 +472,9 @@ const EnhancedPOSSystemWithReceipt = () => {
               d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
             />
           </svg>
-          <h1 className="text-2xl font-bold tracking-wide">FoodVista POS</h1>
+          <h1 className="text-2xl font-bold tracking-wide">
+            {restaurantSettings.name} POS
+          </h1>
         </div>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
@@ -474,6 +497,32 @@ const EnhancedPOSSystemWithReceipt = () => {
               <p className="text-sm text-blue-200">{formatTime(currentTime)}</p>
             </div>
           </div>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="p-2 rounded-full hover:bg-blue-600 transition-colors"
+            title="Settings"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </button>
           <div className="bg-blue-800 px-3 py-1 rounded-full text-sm">
             Active
           </div>
@@ -578,9 +627,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </select>
               </div>
             </div>
-            
+
             {/* Table selection - Only show when Dine In is selected */}
-            {formData.status === "Dine In" && (
+            {formData.status === "Dine-In" && (
               <div className="mt-4 flex items-center space-x-4">
                 <button
                   className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 flex items-center"
@@ -724,9 +773,10 @@ const EnhancedPOSSystemWithReceipt = () => {
                               />
                             </svg>
                           </button>
+
                           <input
-                            type="text"
-                            className="w-12 p-1 border border-gray-300 text-center text-sm focus:ring-2 focus:ring-blue-500"
+                            type="number"
+                            className="w-10 text-center bg-gray-100 border-t border-b border-gray-200"
                             value={item.qty}
                             onChange={(e) =>
                               updateCartQty(item.itemId, e.target.value)
@@ -756,10 +806,8 @@ const EnhancedPOSSystemWithReceipt = () => {
                           </button>
                         </div>
                       </td>
-                      <td className="px-3 py-2">AED {item.rate.toFixed(2)}</td>
-                      <td className="px-3 py-2 font-medium">
-                        AED {item.amount.toFixed(2)}
-                      </td>
+                      <td className="px-3 py-2">{item.rate.toFixed(2)}</td>
+                      <td className="px-3 py-2">{item.amount.toFixed(2)}</td>
                       <td className="px-3 py-2">
                         <button
                           className="text-red-500 hover:text-red-700"
@@ -767,7 +815,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
+                            className="h-5 w-5"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -776,7 +824,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                             />
                           </svg>
                         </button>
@@ -787,28 +835,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                     <tr>
                       <td
                         colSpan="6"
-                        className="px-3 py-8 text-center text-gray-500"
+                        className="px-3 py-4 text-center text-gray-500"
                       >
-                        <div className="flex flex-col items-center">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-10 w-10 text-gray-400 mb-2"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-  strokeLinecap="round"
-  strokeLinejoin="round"
-  strokeWidth={2}
-  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-/>
-                          </svg>
-                          <p>Your cart is empty</p>
-                          <p className="text-xs mt-1">
-                            Add items from the menu to get started
-                          </p>
-                        </div>
+                        Cart is empty. Add items to begin.
                       </td>
                     </tr>
                   )}
@@ -816,83 +845,141 @@ const EnhancedPOSSystemWithReceipt = () => {
               </table>
             </div>
 
-            {/* Order Summary */}
-            <div className="p-4 border-t border-gray-200">
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Remarks
+            {/* Totals and Actions */}
+            <div className="p-4 bg-gray-50 border-t border-gray-200">
+              <div className="flex flex-col space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Subtotal:
+                  </span>
+                  <span className="text-sm font-medium text-gray-800">
+                    {getTotal()} AED
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    VAT (5%):
+                  </span>
+                  <span className="text-sm font-medium text-gray-800">
+                    {getTaxAmount()} AED
+                  </span>
+                </div>
+                <div className="flex justify-between items-center border-t border-gray-200 pt-2 mt-1">
+                  <span className="text-base font-bold text-gray-900">
+                    Total:
+                  </span>
+                  <span className="text-base font-bold text-blue-700">
+                    {getFinalTotal()} AED
+                  </span>
+                </div>
+              </div>
+
+              {/* Order Type Selection */}
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-gray-600 mb-2">
+                  Order Type
+                </label>
+                <div className="flex space-x-3">
+                  <button
+                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
+                      formData.status === "Dine-In"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                    onClick={() => handleInputChange("status", "Dine-In")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                      />
+                    </svg>
+                    Dine-In
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
+                      formData.status === "Takeaway"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                    onClick={() => handleInputChange("status", "Takeaway")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                      />
+                    </svg>
+                    Takeaway
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
+                      formData.status === "Delivery"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                    onClick={() => handleInputChange("status", "Delivery")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
+                      />
+                    </svg>
+                    Delivery
+                  </button>
+                </div>
+              </div>
+
+              {/* Additional Notes */}
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-gray-600 mb-2">
+                  Special Instructions
                 </label>
                 <textarea
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.remarks}
                   onChange={(e) => handleInputChange("remarks", e.target.value)}
-                  placeholder="Add any special instructions or notes here..."
                   rows="2"
-                />
+                  placeholder="Add any special instructions here..."
+                ></textarea>
               </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">AED {getTotal()}</span>
-              </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">VAT (5%)</span>
-                <span className="font-medium">AED {getTaxAmount()}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold mt-3 border-t pt-3">
-                <span className="text-blue-900">Total</span>
-                <span className="text-blue-900">AED {getFinalTotal()}</span>
-              </div>
-            </div>
 
-            {/* Order Type and Action Buttons */}
-            <div className="p-4 bg-gray-50 rounded-b-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <label className="text-sm font-medium text-gray-700">Order Type:</label>
-                  <div className="flex space-x-2">
-                    <button
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        formData.status === "Dine In"
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                      onClick={() => handleInputChange("status", "Dine In")}
-                    >
-                      Dine In
-                    </button>
-                    <button
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        formData.status === "Takeaway"
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                      onClick={() => handleInputChange("status", "Takeaway")}
-                    >
-                      Takeaway
-                    </button>
-                    <button
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        formData.status === "Delivery"
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                      onClick={() => handleInputChange("status", "Delivery")}
-                    >
-                      Delivery
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-4 flex space-x-3">
+              {/* Action Buttons */}
+              <div className="flex space-x-3 mt-6">
                 <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
-                  onClick={() => handleSaveOrder()}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-green-700 flex items-center justify-center"
+                  onClick={() => handleSaveOrder(false)}
                   disabled={cart.length === 0 || loading}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 mr-2"
+                    className="h-4 w-4 mr-1"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -901,19 +988,19 @@ const EnhancedPOSSystemWithReceipt = () => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                      d="M5 13l4 4L19 7"
                     />
                   </svg>
                   {loading ? "Saving..." : "Save Order"}
                 </button>
                 <button
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-blue-700 flex items-center justify-center"
                   onClick={handlePrintReceipt}
                   disabled={cart.length === 0 || loading}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 mr-2"
+                    className="h-4 w-4 mr-1"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -932,22 +1019,22 @@ const EnhancedPOSSystemWithReceipt = () => {
           </div>
         </div>
 
-        {/* Right Section - Menu and Numpad */}
-        <div className="w-full md:w-1/2 p-4 overflow-auto bg-white">
-          {/* Search and Filter */}
-          <div className="mb-4">
-            <div className="relative">
+        {/* Right Section - Menu and Calculator */}
+        <div className="w-full md:w-1/2 p-4 overflow-auto bg-gray-200">
+          {/* Search and Category Filter */}
+          <div className="bg-white p-4 rounded-xl shadow-md mb-4">
+            <div className="relative mb-4">
               <input
                 type="text"
-                className="w-full p-3 pl-10 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Search for menu items..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Search items by name or code..."
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
               />
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <div className="absolute left-3 top-2.5 text-gray-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5 text-gray-400"
+                  className="h-5 w-5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -962,12 +1049,12 @@ const EnhancedPOSSystemWithReceipt = () => {
               </div>
               {searchQuery && (
                 <button
-                  className="absolute inset-y-0 right-0 flex items-center pr-3"
-                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                  onClick={() => handleSearch("")}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-gray-400 hover:text-gray-500"
+                    className="h-5 w-5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -982,17 +1069,15 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </button>
               )}
             </div>
-          </div>
 
-          {/* Categories */}
-          <div className="mb-4 overflow-x-auto">
-            <div className="flex space-x-2 pb-2">
+            {/* Category Pills */}
+            <div className="flex overflow-x-auto py-2 space-x-2 hide-scrollbar">
               {categories.map((category) => (
                 <button
                   key={category.id}
-                  className={`px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap ${
+                  className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${
                     activeCategory === category.name
-                      ? "bg-blue-500 text-white"
+                      ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                   }`}
                   onClick={() => handleCategoryClick(category.name)}
@@ -1004,83 +1089,92 @@ const EnhancedPOSSystemWithReceipt = () => {
           </div>
 
           {/* Menu Items Grid */}
-          <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">
-              {searchQuery ? "Search Results" : `${activeCategory || "All"} Menu Items`}
-            </h3>
-            {loading ? (
-              <div className="flex justify-center items-center h-40">
-                <svg
-                  className="animate-spin h-8 w-8 text-blue-500"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
+          <div className="bg-white p-4 rounded-xl shadow-md mb-4">
+            <h2 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
+              </svg>
+              Menu Items
+              {loading && (
+                <span className="ml-2 text-sm text-blue-600">Loading...</span>
+              )}
+            </h2>
+
+            {error && (
+              <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-3 text-sm">
+                {error}
               </div>
-            ) : filteredMenuItems.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {filteredMenuItems.map((item) => (
-                  <div
-                    key={item.ItemId}
-                    className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => {
-                      setCurrentItem(item);
-                      setTimeout(applyCurrentQtyToSelectedItem, 10);
-                    }}
-                  >
-                    <h4 className="font-medium text-gray-900 mb-1">
-                      {item.ItemName}
-                    </h4>
-                    <p className="text-sm text-gray-500 mb-2">{item.ItemCode}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-blue-600">
-                        AED {item.Rate.toFixed(2)}
-                      </span>
-                      <button
-                        className="bg-blue-100 text-blue-600 p-1 rounded-full hover:bg-blue-200"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addToCart(item);
-                        }}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v16m8-8H4"
-                          />
-                        </svg>
-                      </button>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+              {filteredMenuItems.map((item) => (
+                <div
+                  key={item.ItemId}
+                  className="border border-gray-200 rounded-lg p-3 hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors"
+                  onClick={() => {
+                    setCurrentItem(item);
+                    addToCart(item);
+                  }}
+                >
+                  <div className="font-medium text-sm text-gray-800 mb-1 truncate">
+                    {item.ItemName}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="text-xs text-gray-500">{item.ItemCode}</div>
+                    <div className="font-bold text-blue-700 text-sm">
+                      {item.Rate.toFixed(2)} AED
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
+              {filteredMenuItems.length === 0 && !loading && (
+                <div className="col-span-3 text-center py-4 text-gray-500">
+                  No items found. Try a different search or category.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Number Pad for Quantity */}
+          <div className="bg-white rounded-xl shadow-md">
+            <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-blue-800">
+                Quantity Input
+              </h2>
+              <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-lg font-bold">
+                {currentQty}
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-40 text-gray-500">
+            </div>
+            <div className="p-4 grid grid-cols-3 gap-3">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, ".", 0, "00"].map((num) => (
+                <button
+                  key={num}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-lg text-lg transition-colors"
+                  onClick={() => appendToQty(num)}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-3">
+              <button
+                className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
+                onClick={() => appendToQty("clear")}
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-12 w-12 text-gray-400 mb-2"
+                  className="h-6 w-6 mr-1"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -1089,66 +1183,29 @@ const EnhancedPOSSystemWithReceipt = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-center">
-                  {searchQuery
-                    ? `No items found matching "${searchQuery}"`
-                    : "No items found in this category"}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Number Pad for Quantity */}
-          <div className="bg-gray-100 p-4 rounded-xl shadow-inner">
-            <div className="mb-3 flex justify-between items-center">
-              <h3 className="text-lg font-medium text-gray-900">Quantity</h3>
-              <div className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-xl">
-                {currentQty}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  className="bg-white text-gray-800 p-3 rounded-lg shadow text-lg font-medium hover:bg-gray-50 active:bg-gray-100"
-                  onClick={() => appendToQty(num)}
-                >
-                  {num}
-                </button>
-              ))}
-              <button
-                className="bg-white text-gray-800 p-3 rounded-lg shadow text-lg font-medium hover:bg-gray-50 active:bg-gray-100"
-                onClick={() => appendToQty(".")}
-              >
-                .
-              </button>
-              <button
-                className="bg-white text-gray-800 p-3 rounded-lg shadow text-lg font-medium hover:bg-gray-50 active:bg-gray-100"
-                onClick={() => appendToQty(0)}
-              >
-                0
-              </button>
-              <button
-                className="bg-white text-gray-800 p-3 rounded-lg shadow text-lg font-medium hover:bg-gray-50 active:bg-gray-100"
-                onClick={() => appendToQty("00")}
-              >
-                00
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <button
-                className="bg-red-500 text-white p-3 rounded-lg shadow text-lg font-medium hover:bg-red-600 active:bg-red-700"
-                onClick={() => appendToQty("clear")}
-              >
                 Clear
               </button>
               <button
-                className="bg-green-500 text-white p-3 rounded-lg shadow text-lg font-medium hover:bg-green-600 active:bg-green-700"
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
                 onClick={applyCurrentQtyToSelectedItem}
               >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
                 Apply
               </button>
             </div>
@@ -1158,13 +1215,15 @@ const EnhancedPOSSystemWithReceipt = () => {
 
       {/* Table Selection Modal */}
       {showTableModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Select Table</h2>
+        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-800">
+                Select a Table
+              </h2>
               <button
-                className="text-gray-500 hover:text-gray-700"
                 onClick={() => setShowTableModal(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -1182,55 +1241,124 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </svg>
               </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {tables.map((table) => (
-                  <div
-                    key={table.Id}
-                    className={`border rounded-lg p-3 cursor-pointer transition-all ${
-                      table.Status === "Occupied"
-                        ? "bg-red-50 border-red-300"
-                        : "bg-green-50 border-green-300 hover:bg-green-100"
-                    }`}
-                    onClick={() => {
-                      if (table.Status !== "Occupied") {
-                        selectTable(table);
-                      }
-                    }}
-                  >
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-gray-800">
-                        Table {table.Code}
-                      </span>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs ${
-                          table.Status === "Occupied"
-                            ? "bg-red-500 text-white"
-                            : "bg-green-500 text-white"
-                        }`}
-                      >
-                        {table.Status}
-                      </span>
-                    </div>
-                    <div className="flex items-center text-gray-600 text-sm">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-1"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                        />
-                      </svg>
-                      Capacity: {table.Capacity}
-                    </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-96 overflow-y-auto">
+              {tables.map((table) => (
+                <button
+                  key={table.Id}
+                  className={`p-4 rounded-lg border-2 flex flex-col items-center justify-center hover:bg-blue-50 transition-colors ${
+                    table.Status === "OCCUPIED"
+                      ? "border-red-300 bg-red-50"
+                      : "border-green-300 bg-green-50 hover:border-green-400"
+                  }`}
+                  onClick={() => selectTable(table)}
+                  disabled={table.Status === "OCCUPIED"}
+                >
+                  <div className="text-2xl font-bold mb-1">T{table.Code}</div>
+                  <div className="text-xs uppercase font-medium mb-1">
+                    {table.Status}
                   </div>
-                ))}
+                  <div className="text-sm">
+                    <span className="font-medium">{table.Capacity}</span> seats
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-800">
+                Restaurant Settings
+              </h2>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Restaurant Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={restaurantSettings.name}
+                  onChange={(e) => handleSettingsChange("name", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  TRN Number
+                </label>
+                <input
+                  type="text"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={restaurantSettings.trn}
+                  onChange={(e) => handleSettingsChange("trn", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={restaurantSettings.phone}
+                  onChange={(e) =>
+                    handleSettingsChange("phone", e.target.value)
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Address
+                </label>
+                <textarea
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={restaurantSettings.address}
+                  onChange={(e) =>
+                    handleSettingsChange("address", e.target.value)
+                  }
+                  rows="2"
+                ></textarea>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-lg text-sm flex-1"
+                  onClick={() => setShowSettingsModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1"
+                  onClick={saveSettings}
+                >
+                  Save Settings
+                </button>
               </div>
             </div>
           </div>
@@ -1239,13 +1367,15 @@ const EnhancedPOSSystemWithReceipt = () => {
 
       {/* Receipt Modal */}
       {showReceiptModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Receipt Preview</h2>
+        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-800">
+                Preview Receipt
+              </h2>
               <button
-                className="text-gray-500 hover:text-gray-700"
                 onClick={() => setShowReceiptModal(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -1263,33 +1393,34 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </svg>
               </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
+
+            <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
               <ReceiptTemplate
-                orderData={{
+                order={{
                   orderNo: formData.orderNo,
-                  customerName: formData.custName || "Walk-in Customer",
-                  orderType: formData.status,
-                  tableNo: formData.tableNo || "N/A",
                   date: formData.eDate,
                   time: formData.time,
+                  status: formData.status,
+                  tableNo: formData.tableNo,
+                  custName: formData.custName,
+                  custId: formData.custId,
                   items: cart,
-                  subtotal: getTotal(),
-                  tax: getTaxAmount(),
-                  total: getFinalTotal(),
-                  remarks: formData.remarks,
+                  subTotal: getTotal(),
+                  taxAmount: getTaxAmount(),
+                  totalAmount: getFinalTotal(),
                 }}
+                restaurant={restaurantSettings}
               />
             </div>
-            <div className="p-4 border-t flex space-x-3">
+
+            <div className="flex space-x-3">
               <button
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
-                onClick={() => {
-                  window.print();
-                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center"
+                onClick={() => window.print()}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-2"
+                  className="h-4 w-4 mr-1"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -1301,7 +1432,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                     d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
                   />
                 </svg>
-                Print Receipt
+                Print
               </button>
               <button
                 className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
