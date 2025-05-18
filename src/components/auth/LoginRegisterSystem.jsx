@@ -91,17 +91,7 @@ const LoginRegisterSystem = () => {
         return;
       }
       
-      // Get the encrypted password from environment variables
-      const encryptedPassword = import.meta.env.VITE_ENCRYPTED_PASSWORD;
-      
-      // Decrypt the password to compare with user's input
-      const decryptedPassword = decryptSecret(encryptedPassword);
-      
-      // Validate if the entered password matches the decrypted one
-      if (loginForm.password !== decryptedPassword) {
-        throw new Error("Invalid password. Please try again.");
-      }
-      
+    
       // Make API call for login authentication with validated credentials
       const response = await axios.post('/login', {
         username: loginForm.username,

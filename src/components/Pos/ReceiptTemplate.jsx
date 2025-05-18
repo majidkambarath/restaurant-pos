@@ -1,8 +1,8 @@
-import React, { useRef, memo, useEffect } from 'react';
+import React, { useRef, memo, useEffect } from "react";
 
 const ReceiptTemplate = ({ order, restaurant }) => {
   const printRef = useRef();
-  
+
   // Auto-print functionality when component mounts
   useEffect(() => {
     // Automatically print to connected device when component loads
@@ -11,15 +11,15 @@ const ReceiptTemplate = ({ order, restaurant }) => {
 
   const printDirectToConnectedDevice = () => {
     const content = printRef.current;
-    
+
     // Direct printing to connected device without preview
-    const printContent = document.createElement('iframe');
-    printContent.style.position = 'absolute';
-    printContent.style.top = '-9999px';
-    printContent.style.left = '-9999px';
-    printContent.style.width = '80mm';
+    const printContent = document.createElement("iframe");
+    printContent.style.position = "absolute";
+    printContent.style.top = "-9999px";
+    printContent.style.left = "-9999px";
+    printContent.style.width = "80mm";
     document.body.appendChild(printContent);
-    
+
     printContent.contentDocument.write(`
       <!DOCTYPE html>
       <html>
@@ -55,9 +55,10 @@ const ReceiptTemplate = ({ order, restaurant }) => {
             .info { margin-bottom: 5px; font-size: 11px; }
             .title { font-weight: bold; text-align: center; margin: 5px 0; font-size: 13px; }
             .divider { border-bottom: 1px dashed #000; margin: 5px 0; }
-            .item-row { display: flex; justify-content: space-between; margin: 3px 0; }
-            .item-name { flex: 2; }
-            .item-qty { flex: 1; text-align: center; }
+            .item-row { display: flex; justify-content: flex-start; margin: 3px 0; }
+            .item-sl { flex: 0 0 25px; text-align: left; padding-left: 5px; }
+            .item-name { flex: 2; padding-left: 0; }
+            .item-qty { flex: 0 0 30px; text-align: center; }
             .item-price { flex: 1; text-align: right; }
             .totals { margin-top: 10px; text-align: right; }
             .total-row { display: flex; justify-content: space-between; margin: 2px 0; }
@@ -87,14 +88,14 @@ const ReceiptTemplate = ({ order, restaurant }) => {
         <body>${content.innerHTML}</body>
       </html>
     `);
-    
+
     printContent.contentDocument.close();
-    
+
     // Start printing process
     setTimeout(() => {
       printContent.contentWindow.focus();
       printContent.contentWindow.print();
-      
+
       // Remove the iframe after printing
       setTimeout(() => {
         document.body.removeChild(printContent);
@@ -102,78 +103,102 @@ const ReceiptTemplate = ({ order, restaurant }) => {
     }, 500);
   };
 
-  const currentDate = order?.date || new Date().toLocaleDateString('en-US', {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const currentDate =
+    order?.date ||
+    new Date().toLocaleDateString("en-US", {
+      month: "numeric",
+      day: "numeric",
+      year: "numeric",
+    });
 
   // Ensure restaurant data is properly handled
-  const restaurantName = restaurant?.name || localStorage.getItem("restaurantName") || "Restaurant";
-  const restaurantTRN = restaurant?.trn || localStorage.getItem("restaurantTRN") || "";
-  const restaurantPhone = restaurant?.phone || localStorage.getItem("restaurantPhone") || "";
-  const restaurantAddress = restaurant?.address || localStorage.getItem("restaurantAddress") || "";
+  const restaurantName =
+    restaurant?.name || localStorage.getItem("restaurantName") || "Restaurant";
+  const restaurantTRN =
+    restaurant?.trn || localStorage.getItem("restaurantTRN") || "";
+  const restaurantPhone =
+    restaurant?.phone || localStorage.getItem("restaurantPhone") || "";
+  const restaurantAddress =
+    restaurant?.address || localStorage.getItem("restaurantAddress") || "";
 
   return (
-    <div className="flex flex-col space-y-4">
-      <div 
+    <div className="flex flex-col space-y-4 mt-3">
+      <div
         ref={printRef}
-        className="receipt bg-white p-4 border border-gray-200 rounded-lg hidden"
-        style={{ fontFamily: 'Courier New, monospace', fontSize: '12px', width: '80mm', margin: '0 auto' }}
+        className="receipt bg-white p-4 border border-gray-200 rounded-lg"
+        style={{
+          fontFamily: "Courier New, monospace",
+          fontSize: "12px",
+          width: "80mm",
+          margin: "0 auto",
+        }}
       >
         <div className="header">
           <div className="business-name">{restaurantName.toUpperCase()}</div>
           <div className="info">{restaurantAddress}</div>
-          <div className="info">Phone: {restaurantPhone || 'N/A'}</div>
+          <div className="info">Phone: {restaurantPhone || "N/A"}</div>
           {restaurantTRN && <div className="info">TRN: {restaurantTRN}</div>}
         </div>
-        
+
         <div className="title">TAX INVOICE</div>
-        
-        <div className="info">Date: {currentDate}</div>
-        <div className="info">Time: {order?.time || 'N/A'}</div>
-        <div className="info">Invoice #: {order?.orderNo || 'N/A'}</div>
-        <div className="info">Customer: {order?.custName || 'WALK-IN CUSTOMER'}</div>
-        
+
+        <div className="info -ml-1">Date: {currentDate}</div>
+        <div className="info">Time: {order?.time || "N/A"}</div>
+        <div className="info">Invoice #: {order?.orderNo || "N/A"}</div>
+        <div className="info">
+          Customer: {order?.custName || "WALK-IN CUSTOMER"}
+        </div>
+
         <div className="divider"></div>
-        
-        <div className="item-row" style={{ fontWeight: 'bold' }}>
+
+        <div className="item-row" style={{ fontWeight: "bold" }}>
+          <div className="item-sl">Sl</div>
           <div className="item-name">Item</div>
           <div className="item-qty">Qty</div>
           <div className="item-price">Price (AED)</div>
         </div>
-        
+
         <div className="divider"></div>
-        
-        {order?.items && order.items.map((item, index) => (
-          <div key={`item-${index}`} className="item-row">
-            <div className="item-name">{item.name || item.itemName || 'Unknown Item'}</div>
-            <div className="item-qty">{item.qty || 1}</div>
-            <div className="item-price">{parseFloat(item.price || item.amount || 0).toFixed(2)}</div>
-          </div>
-        ))}
-        
+
+        {order?.items &&
+          order.items.map((item, index) => (
+            <div key={`item-${index}`} className="item-row">
+              <div className="item-sl">{index + 1}</div>
+              <div className="item-name">
+                {item.name || item.itemName || "Unknown Item"}
+              </div>
+              <div className="item-qty">{item.qty || 1}</div>
+              <div className="item-price">
+                {parseFloat(item.price || item.amount || 0).toFixed(2)}
+              </div>
+            </div>
+          ))}
+
         <div className="divider"></div>
-        
+
         <div className="totals">
           <div className="total-row">
             <div className="total-label">Subtotal (Excl. VAT):</div>
-            <div className="total-value">AED {parseFloat(order?.subTotal || 0).toFixed(2)}</div>
+            <div className="total-value">
+              AED {parseFloat(order?.subTotal || 0).toFixed(2)}
+            </div>
           </div>
           <div className="total-row">
             <div className="total-label">VAT Amount:</div>
-            <div className="total-value">AED {parseFloat(order?.taxAmount || 0).toFixed(2)}</div>
+            <div className="total-value">
+              AED {parseFloat(order?.taxAmount || 0).toFixed(2)}
+            </div>
           </div>
           <div className="total-row grand-total">
             <div className="total-label">Grand Total:</div>
-            <div className="total-value">AED {parseFloat(order?.totalAmount || 0).toFixed(2)}</div>
+            <div className="total-value">
+              AED {parseFloat(order?.totalAmount || 0).toFixed(2)}
+            </div>
           </div>
         </div>
-        
+
         <div className="footer">
           <p>Thank you for your business!</p>
-          {/* {order?.tableNo && <p>Table: {order.tableNo}</p>}
-          {order?.remarks && <p>Note: {order.remarks}</p>} */}
         </div>
       </div>
     </div>

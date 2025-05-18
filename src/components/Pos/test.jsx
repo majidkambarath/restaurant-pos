@@ -15,7 +15,7 @@ const EnhancedPOSSystemWithReceipt = () => {
     tableNo: "",
     remarks: "",
     total: 0,
-    status: "Dine-In", // Maps to option: 2
+    status: "Dine-In",
     prefix: "ORD",
     eDate: "",
     time: "",
@@ -43,22 +43,22 @@ const EnhancedPOSSystemWithReceipt = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showReceipt, setShowReceipt] = useState(false);
 
+  // Logout handler
   const handleLogout = useCallback(() => {
     localStorage.removeItem("userName");
     localStorage.removeItem("userId");
     localStorage.setItem("isLoggedIn", "false");
-    window.location.href = "/"; // Redirect to login page
+    window.location.href = "/login"; // Redirect to login page
   }, []);
-  // Generate a random customer ID when component mounts
+
+  // Generate random customer ID
   useEffect(() => {
     generateRandomCustomerId();
   }, []);
 
-  // Function to generate a random customer ID
   const generateRandomCustomerId = () => {
-    const randomId = Math.floor(10000 + Math.random() * 90000); // 5-digit number
+    const randomId = Math.floor(10000 + Math.random() * 90000);
     setFormData((prev) => ({ ...prev, custId: randomId.toString() }));
   };
 
@@ -67,7 +67,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     const fetchInitialData = async () => {
       setLoading(true);
       try {
-        // Fetch latest order number
         const orderResponse = await axios.get("/order/latest");
         const latestOrderNo = orderResponse.data.data.orderNo || "0";
         setFormData((prev) => ({
@@ -77,11 +76,9 @@ const EnhancedPOSSystemWithReceipt = () => {
           time: formatTime(new Date()),
         }));
 
-        // Fetch tables
         const tablesResponse = await axios.get("/tables-seats");
         setTables(tablesResponse.data.data);
 
-        // Fetch categories
         const categoriesResponse = await axios.get("/categories");
         const fetchedCategories = categoriesResponse.data.data.map((cat) => ({
           id: cat.Code,
@@ -90,13 +87,11 @@ const EnhancedPOSSystemWithReceipt = () => {
         setCategories(fetchedCategories);
         setActiveCategory(fetchedCategories[0]?.name || null);
 
-        // Fetch items
         const itemsResponse = await axios.get("/items", {
           params: { search: "", limit: 100, offset: 0 },
         });
         setItems(itemsResponse.data.data);
 
-        // Fetch employees
         const employeesResponse = await axios.get("/employees");
         setEmployees(employeesResponse.data.data);
       } catch (err) {
@@ -146,17 +141,14 @@ const EnhancedPOSSystemWithReceipt = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Handle input changes
   const handleInputChange = useCallback((field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // Handle settings changes
   const handleSettingsChange = useCallback((field, value) => {
     setRestaurantSettings((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // Save settings to local storage
   const saveSettings = useCallback(() => {
     localStorage.setItem("restaurantName", restaurantSettings.name);
     localStorage.setItem("restaurantTRN", restaurantSettings.trn);
@@ -165,7 +157,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     setShowSettingsModal(false);
   }, [restaurantSettings]);
 
-  // Add item to cart
   const addToCart = useCallback(
     (item) => {
       const qty = Number(currentQty || 1);
@@ -194,8 +185,8 @@ const EnhancedPOSSystemWithReceipt = () => {
           qty,
           rate: item.Rate,
           amount: qty * item.Rate,
-          cost: 0, // Adjust based on backend requirements
-          vat: 5, // 5% VAT as per backend
+          cost: 0,
+          vat: 5,
           vatAmt: (qty * item.Rate * 0.05).toFixed(2),
           taxLedger: 0,
           arabic: "",
@@ -209,7 +200,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     [cart, currentQty]
   );
 
-  // Update cart quantity
   const updateCartQty = useCallback((itemId, newQty) => {
     const qty = Number(newQty) || 1;
     setCart((prev) =>
@@ -226,7 +216,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     );
   }, []);
 
-  // Apply current quantity
   const applyCurrentQtyToSelectedItem = useCallback(() => {
     if (currentItem) {
       addToCart(currentItem);
@@ -236,7 +225,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     }
   }, [currentItem, cart, currentQty, addToCart, updateCartQty]);
 
-  // Remove item from cart
   const removeCartItem = useCallback((itemId) => {
     setCart((prev) =>
       prev
@@ -245,7 +233,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     );
   }, []);
 
-  // Append digits to quantity
   const appendToQty = useCallback((digit) => {
     setCurrentQty((prev) => {
       if (digit === "clear") return "1";
@@ -255,7 +242,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     });
   }, []);
 
-  // Calculate totals
   const getTotal = useCallback(
     () => cart.reduce((sum, item) => sum + item.amount, 0).toFixed(2),
     [cart]
@@ -269,14 +255,10 @@ const EnhancedPOSSystemWithReceipt = () => {
     [getTotal, getTaxAmount]
   );
 
-  // Clear cart
   const clearCart = useCallback(() => setCart([]), []);
 
-  // Clear all form fields
   const clearAllFields = useCallback(() => {
-    // Generate a new random customer ID
     const randomId = Math.floor(10000 + Math.random() * 90000);
-
     setFormData((prev) => ({
       ...prev,
       custId: randomId.toString(),
@@ -291,15 +273,12 @@ const EnhancedPOSSystemWithReceipt = () => {
       total: 0,
       status: "Dine-In",
     }));
-
     clearCart();
     setCurrentQty("1");
     setCurrentItem(null);
   }, [clearCart]);
 
-  // Select table
   const selectTable = useCallback((table) => {
-    console.log(table);
     setFormData((prev) => ({
       ...prev,
       tableId: table.tableId,
@@ -309,7 +288,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     setShowTableModal(false);
   }, []);
 
-  // Format date and time
   const formatDate = (date) =>
     date
       .toLocaleDateString("en-GB", {
@@ -325,7 +303,6 @@ const EnhancedPOSSystemWithReceipt = () => {
       hour12: false,
     });
 
-  // Filter menu items
   const filteredMenuItems = useMemo(() => {
     if (searchQuery) {
       return items.filter(
@@ -342,12 +319,20 @@ const EnhancedPOSSystemWithReceipt = () => {
     );
   }, [searchQuery, items, activeCategory, categories]);
 
-  // Handle receipt printing
   const handlePrintReceipt = useCallback(() => {
     setShowReceiptModal(true);
   }, []);
 
-  // Handle save order
+  const handleQuickPrint = useCallback(async () => {
+    if (cart.length === 0) {
+      setError("Cart is empty. Add items to print.");
+      return;
+    }
+    await handleSaveOrder(true);
+    window.print();
+    setShowReceiptModal(false);
+  }, [cart, handleSaveOrder]);
+
   const handleSaveOrder = useCallback(
     async (fromPrint = false) => {
       if (cart.length === 0) {
@@ -363,7 +348,7 @@ const EnhancedPOSSystemWithReceipt = () => {
 
       const orderData = {
         orderNo: formData.orderNo,
-        status: "NEW", // Set status based on context
+        status: fromPrint ? "KOT" : "NEW",
         date: formData.eDate,
         time: formData.time,
         option: orderTypeMap[formData.status],
@@ -399,9 +384,7 @@ const EnhancedPOSSystemWithReceipt = () => {
       try {
         const response = await axios.post("/orders", orderData);
         setCart([]);
-        // Generate a new random customer ID
         const randomId = Math.floor(10000 + Math.random() * 90000);
-
         setFormData((prev) => ({
           ...prev,
           orderNo: String(parseInt(prev.orderNo) + 1),
@@ -421,8 +404,6 @@ const EnhancedPOSSystemWithReceipt = () => {
           holdedOrder: "0",
         }));
         setShowReceiptModal(false);
-        setShowReceipt(false);
-
         alert("Order saved successfully!");
         return response.data.data.orderNo;
       } catch (err) {
@@ -435,7 +416,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     [cart, formData, getFinalTotal]
   );
 
-  // Handle category click
   const handleCategoryClick = useCallback(
     async (categoryName) => {
       setActiveCategory(categoryName);
@@ -457,7 +437,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     [categories]
   );
 
-  // Handle search
   const handleSearch = useCallback((query) => {
     setSearchQuery(query);
   }, []);
@@ -802,7 +781,6 @@ const EnhancedPOSSystemWithReceipt = () => {
                               />
                             </svg>
                           </button>
-
                           <input
                             type="number"
                             className="w-10 text-center bg-gray-100 border-t border-b border-gray-200"
@@ -972,7 +950,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                       viewBox="0 0 24 24"
                       stroke="currentColor"
                     >
-                      <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                      <path
+                        d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"
+                      />
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -1395,105 +1375,139 @@ const EnhancedPOSSystemWithReceipt = () => {
       )}
 
       {/* Receipt Modal */}
-     {showReceiptModal && (
-  <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-blue-800">
-          Preview Receipt
-        </h2>
-        <button
-          onClick={() => {
-            setShowReceiptModal(false);
-            setShowReceipt(false);
-          }}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
+      {showReceiptModal && (
+        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-800">
+                Preview Receipt
+              </h2>
+              <button
+                onClick={() => setShowReceiptModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
 
-      <div className="flex space-x-3">
-        <button
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center"
-          onClick={() => setShowReceipt(true)}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-1"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-            />
-          </svg>
-          Print
-        </button>
-        <button
-          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
-          onClick={() => {
-            setShowReceipt(!showReceipt);
-            handleSaveOrder(true);
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          Save & Print
-        </button>
-      </div>
-      {showReceipt && (
-        <div className="print-only">
-          <ReceiptTemplate
-            order={{
-              orderNo: formData.orderNo,
-              date: formData.eDate,
-              time: formData.time,
-              status: formData.status,
-              tableNo: formData.tableNo,
-              custName: formData.custName,
-              custId: formData.custId,
-              items: cart,
-              subTotal: getTotal(),
-              taxAmount: getTaxAmount(),
-              totalAmount: getFinalTotal(),
-            }}
-            restaurant={restaurantSettings}
-          />
+            <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+              <ReceiptTemplate
+                order={{
+                  orderNo: formData.orderNo,
+                  date: formData.eDate,
+                  time: formData.time,
+                  status: formData.status,
+                  tableNo: formData.tableNo,
+                  custName: formData.custName,
+                  custId: formData.custId,
+                  items: cart,
+                  subTotal: getTotal(),
+                  taxAmount: getTaxAmount(),
+                  totalAmount: getFinalTotal(),
+                }}
+                restaurant={restaurantSettings}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center justify-center"
+                onClick={() => window.print()}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                  />
+                </svg>
+                Print
+              </button>
+              <button
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center justify-center"
+                onClick={() => handleSaveOrder(true)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                Save & Print
+              </button>
+              <button
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm flex items-center justify-center"
+                onClick={handleQuickPrint}
+                disabled={cart.length === 0 || loading}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                Quick Print
+              </button>
+              <button
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-lg text-sm flex items-center justify-center"
+                onClick={() => setShowReceiptModal(false)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
-  </div>
-)}
 
       {/* Error Toast */}
       {error && (
