@@ -1022,27 +1022,30 @@ const EnhancedPOSSystemWithReceipt = () => {
                   </svg>
                   {loading ? "Saving..." : "Save Order"}
                 </button>
-                <button
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-blue-700 flex items-center justify-center"
-                  onClick={handlePrintReceipt}
-                  disabled={cart.length === 0 || loading}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                {(formData.status !== "Dine-In" ||
+                  (formData.status === "Dine-In" && formData.tableNo)) && (
+                  <button
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-blue-700 flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    onClick={handlePrintReceipt}
+                    disabled={cart.length === 0 || loading}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                    />
-                  </svg>
-                  Print Receipt
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                      />
+                    </svg>
+                    Print Receipt
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1395,105 +1398,105 @@ const EnhancedPOSSystemWithReceipt = () => {
       )}
 
       {/* Receipt Modal */}
-     {showReceiptModal && (
-  <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-blue-800">
-          Preview Receipt
-        </h2>
-        <button
-          onClick={() => {
-            setShowReceiptModal(false);
-            setShowReceipt(false);
-          }}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
+      {showReceiptModal && (
+        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-800">
+                Preview Receipt
+              </h2>
+              <button
+                onClick={() => {
+                  setShowReceiptModal(false);
+                  setShowReceipt(false);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
 
-      <div className="flex space-x-3">
-        <button
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center"
-          onClick={() => setShowReceipt(true)}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-1"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-            />
-          </svg>
-          Print
-        </button>
-        <button
-          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
-          onClick={() => {
-            setShowReceipt(!showReceipt);
-            handleSaveOrder(true);
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          Save & Print
-        </button>
-      </div>
-      {showReceipt && (
-        <div className="print-only">
-          <ReceiptTemplate
-            order={{
-              orderNo: formData.orderNo,
-              date: formData.eDate,
-              time: formData.time,
-              status: formData.status,
-              tableNo: formData.tableNo,
-              custName: formData.custName,
-              custId: formData.custId,
-              items: cart,
-              subTotal: getTotal(),
-              taxAmount: getTaxAmount(),
-              totalAmount: getFinalTotal(),
-            }}
-            restaurant={restaurantSettings}
-          />
+            <div className="flex space-x-3">
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center"
+                onClick={() => setShowReceipt(true)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                  />
+                </svg>
+                Print
+              </button>
+              <button
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
+                onClick={() => {
+                  setShowReceipt(!showReceipt);
+                  handleSaveOrder(true);
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                Save & Print
+              </button>
+            </div>
+            {showReceipt && (
+              <div className="print-only">
+                <ReceiptTemplate
+                  order={{
+                    orderNo: formData.orderNo,
+                    date: formData.eDate,
+                    time: formData.time,
+                    status: formData.status,
+                    tableNo: formData.tableNo,
+                    custName: formData.custName,
+                    custId: formData.custId,
+                    items: cart,
+                    subTotal: getTotal(),
+                    taxAmount: getTaxAmount(),
+                    totalAmount: getFinalTotal(),
+                  }}
+                  restaurant={restaurantSettings}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
-    </div>
-  </div>
-)}
 
       {/* Error Toast */}
       {error && (
