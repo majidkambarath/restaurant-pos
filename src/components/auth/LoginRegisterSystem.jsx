@@ -41,6 +41,7 @@ const LoginRegisterSystem = () => {
   const [registerForm, setRegisterForm] = useState({
     restaurantName: "",
     terminalName: "",
+    baseUrl: "",
     secretCode: "",
   });
 
@@ -130,8 +131,15 @@ const LoginRegisterSystem = () => {
     setError(null);
 
     try {
-      if (!registerForm.restaurantName || !registerForm.terminalName || !registerForm.secretCode) {
+      if (!registerForm.restaurantName || !registerForm.terminalName || !registerForm.baseUrl || !registerForm.secretCode) {
         throw new Error("All fields are required");
+      }
+
+      // Validate baseUrl format
+      try {
+        new URL(registerForm.baseUrl);
+      } catch (urlError) {
+        throw new Error("Please enter a valid URL for the base URL");
       }
 
       // Get the encrypted secret code from environment variables
@@ -149,6 +157,7 @@ const LoginRegisterSystem = () => {
       const registrationTime = new Date().toISOString();
       localStorage.setItem("terminalName", registerForm.terminalName);
       localStorage.setItem("restaurantName", registerForm.restaurantName);
+      localStorage.setItem("baseUrl", registerForm.baseUrl);
       localStorage.setItem("registrationTime", registrationTime);
       
       setSuccess("Registration successful! Please login to continue.");
@@ -160,6 +169,7 @@ const LoginRegisterSystem = () => {
         setRegisterForm({
           restaurantName: "",
           terminalName: "",
+          baseUrl: "",
           secretCode: "",
         });
       }, 1500);
@@ -423,6 +433,42 @@ const LoginRegisterSystem = () => {
                       required
                     />
                   </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Base URL
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9m0 9c-5 0-9-4-9-9s4-9 9-9"
+                        />
+                      </svg>
+                    </div>
+                    <input
+                      type="url"
+                      name="baseUrl"
+                      placeholder="https://api.example.com"
+                      className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={registerForm.baseUrl}
+                      onChange={handleRegisterChange}
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the API base URL for your server
+                  </p>
                 </div>
 
                 <div className="mb-6">
