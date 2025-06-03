@@ -131,16 +131,16 @@ const LoginRegisterSystem = () => {
     setError(null);
 
     try {
-      if (!registerForm.restaurantName || !registerForm.terminalName || !registerForm.baseUrl || !registerForm.secretCode) {
+      if (!registerForm.restaurantName || !registerForm.terminalName  || !registerForm.secretCode) {
         throw new Error("All fields are required");
       }
 
-      // Validate baseUrl format
-      try {
-        new URL(registerForm.baseUrl);
-      } catch (urlError) {
-        throw new Error("Please enter a valid URL for the base URL");
-      }
+      // // Validate baseUrl format
+      // try {
+      //   new URL(registerForm.baseUrl);
+      // } catch (urlError) {
+      //   throw new Error("Please enter a valid URL for the base URL");
+      // }
 
       // Get the encrypted secret code from environment variables
       const encryptedSecretCode = import.meta.env.VITE_SECRET_CODE;
@@ -463,7 +463,7 @@ const LoginRegisterSystem = () => {
                       className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={registerForm.baseUrl}
                       onChange={handleRegisterChange}
-                      required
+                      // required
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">

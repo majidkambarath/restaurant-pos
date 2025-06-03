@@ -1,8 +1,65 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import ReceiptTemplate from "./ReceiptTemplate";
+import { useNavigate } from "react-router-dom";
+import ReceiptTemplate from "./ReceiptTemplate"; // Ensure this component exists and accepts tokenNo prop
 import axios from "../../api/axios";
 
+// Constants
+const TAX_RATE = 0.05;
+const ORDER_TYPE_MAP = {
+  "Dine-In": 2,
+  Takeaway: 3,
+  Delivery: 1,
+};
+const REVERSE_ORDER_TYPE_MAP = Object.fromEntries(
+  Object.entries(ORDER_TYPE_MAP).map(([key, value]) => [value, key])
+);
+
+// Custom hook for debounced search
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+};
+// Reusable Modal Component
+const Modal = React.memo(({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-white/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-blue-800">{title}</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+            aria-label="Close modal"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+});
+
 const EnhancedPOSSystemWithReceipt = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     orderNo: "0",
     custId: "",
@@ -15,11 +72,12 @@ const EnhancedPOSSystemWithReceipt = () => {
     tableNo: "",
     remarks: "",
     total: 0,
-    status: "Dine-In", // Maps to option: 2
+    status: "Dine-In",
     prefix: "ORD",
     eDate: "",
     time: "",
     holdedOrder: "0",
+    selectedSeats: "",
   });
   const [restaurantSettings, setRestaurantSettings] = useState({
     name: localStorage.getItem("restaurantName") || "Restaurant",
@@ -29,95 +87,143 @@ const EnhancedPOSSystemWithReceipt = () => {
   });
   const [cart, setCart] = useState([]);
   const [currentQty, setCurrentQty] = useState("1");
+  const [selectedCartItemId, setSelectedCartItemId] = useState(null);
   const [currentItem, setCurrentItem] = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showKOTModal, setShowKOTModal] = useState(false);
+  const [pendingOrders, setPendingOrders] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [tables, setTables] = useState([]);
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [tokenCounts, setTokenCounts] = useState({}); // New state for token counts
   const [loading, setLoading] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showReceipt, setShowReceipt] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  const debouncedCustomerSearchQuery = useDebounce(customerSearchQuery, 500);
+
+  // Memoized format functions
+  const formatDate = useCallback(
+    (date) =>
+      date
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .replace(/ /g, "-"),
+    []
+  );
+  const formatTime = useCallback(
+    (date) =>
+      date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    []
+  );
+
+  // Memoized total calculations
+  const getTotal = useMemo(
+    () => cart.reduce((sum, item) => sum + item.amount, 0).toFixed(2),
+    [cart]
+  );
+  const getTaxAmount = useMemo(
+    () => (parseFloat(getTotal) * TAX_RATE).toFixed(2),
+    [getTotal]
+  );
+  const getFinalTotal = useMemo(
+    () => (parseFloat(getTotal) + parseFloat(getTaxAmount)).toFixed(2),
+    [getTotal, getTaxAmount]
+  );
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("userName");
     localStorage.removeItem("userId");
     localStorage.setItem("isLoggedIn", "false");
-    window.location.href = "/"; // Redirect to login page
+    navigate("/");
+  }, [navigate]);
+
+  const generateRandomCustomerId = useCallback(() => {
+    const randomId = Math.floor(10000 + Math.random() * 90000);
+    setFormData((prev) => ({ ...prev, custId: randomId.toString() }));
   }, []);
-  // Generate a random customer ID when component mounts
+
   useEffect(() => {
     generateRandomCustomerId();
-  }, []);
+  }, [generateRandomCustomerId]);
 
-  // Function to generate a random customer ID
-  const generateRandomCustomerId = () => {
-    const randomId = Math.floor(10000 + Math.random() * 90000); // 5-digit number
-    setFormData((prev) => ({ ...prev, custId: randomId.toString() }));
-  };
-
-  // Fetch initial data
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
       try {
-        // Fetch latest order number
-        const orderResponse = await axios.get("/order/latest");
-        const latestOrderNo = orderResponse.data.data.orderNo || "0";
+        const [
+          orderResponse,
+          tablesResponse,
+          categoriesResponse,
+          itemsResponse,
+          employeesResponse,
+          customersResponse,
+          pendingOrdersResponse,
+          tokenCountsResponse, // Added token counts API call
+        ] = await Promise.all([
+          axios
+            .get("/order/latest")
+            .catch(() => ({ data: { data: { orderNo: "0" } } })),
+          axios.get("/tables-seats").catch(() => ({ data: { data: [] } })),
+          axios.get("/categories").catch(() => ({ data: { data: [] } })),
+          axios
+            .get("/items", { params: { search: "", limit: 100, offset: 0 } })
+            .catch(() => ({ data: { data: [] } })),
+          axios.get("/employees").catch(() => ({ data: { data: [] } })),
+          axios
+            .get("/customers", {
+              params: { search: "", limit: 100, offset: 0 },
+            })
+            .catch(() => ({ data: { data: [] } })),
+          axios.get("/pending").catch(() => ({ data: { data: [] } })),
+          axios.get("/token-counts").catch(() => ({ data: { data: {} } })), // Fetch token counts
+        ]);
+
         setFormData((prev) => ({
           ...prev,
-          orderNo: String(parseInt(latestOrderNo)),
+          orderNo: String(parseInt(orderResponse.data.data.orderNo || "0") + 1),
           eDate: formatDate(new Date()),
           time: formatTime(new Date()),
         }));
-
-        // Fetch tables
-        const tablesResponse = await axios.get("/tables-seats");
         setTables(tablesResponse.data.data);
-
-        // Fetch categories
-        const categoriesResponse = await axios.get("/categories");
-        const fetchedCategories = categoriesResponse.data.data.map((cat) => ({
-          id: cat.Code,
-          name: cat.GrpName,
-        }));
-        setCategories(fetchedCategories);
-        setActiveCategory(fetchedCategories[0]?.name || null);
-
-        // Fetch items
-        const itemsResponse = await axios.get("/items", {
-          params: { search: "", limit: 100, offset: 0 },
-        });
+        setCategories(
+          categoriesResponse.data.data.map((cat) => ({
+            id: cat.Code,
+            name: cat.GrpName,
+          }))
+        );
+        setActiveCategory(categoriesResponse.data.data[0]?.GrpName || null);
         setItems(itemsResponse.data.data);
-
-        // Fetch employees
-        const employeesResponse = await axios.get("/employees");
         setEmployees(employeesResponse.data.data);
+        setCustomers(customersResponse.data.data);
+        setPendingOrders(pendingOrdersResponse.data.data);
+        setTokenCounts(tokenCountsResponse.data.data); // Store token counts
       } catch (err) {
         setError("Failed to fetch initial data.");
-        console.error(err);
       } finally {
         setLoading(false);
       }
     };
     fetchInitialData();
-  }, []);
+  }, [formatDate, formatTime]);
 
-  // Debounce search query
-  useEffect(() => {
-    const timerId = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 500);
-    return () => clearTimeout(timerId);
-  }, [searchQuery]);
-
-  // Effect for debounced search
   useEffect(() => {
     const fetchSearchResults = async () => {
       if (debouncedSearchQuery) {
@@ -129,7 +235,6 @@ const EnhancedPOSSystemWithReceipt = () => {
           setItems(response.data.data);
         } catch (err) {
           setError("Failed to fetch search results.");
-          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -138,25 +243,42 @@ const EnhancedPOSSystemWithReceipt = () => {
     fetchSearchResults();
   }, [debouncedSearchQuery]);
 
-  // Update current time
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const fetchCustomerSearchResults = async () => {
+      if (debouncedCustomerSearchQuery) {
+        setLoading(true);
+        try {
+          const response = await axios.get("/customers", {
+            params: {
+              search: debouncedCustomerSearchQuery,
+              limit: 100,
+              offset: 0,
+            },
+          });
+          setCustomers(response.data.data);
+        } catch (err) {
+          setError("Failed to fetch customer search results.");
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    fetchCustomerSearchResults();
+  }, [debouncedCustomerSearchQuery]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Handle input changes
   const handleInputChange = useCallback((field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // Handle settings changes
   const handleSettingsChange = useCallback((field, value) => {
     setRestaurantSettings((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // Save settings to local storage
   const saveSettings = useCallback(() => {
     localStorage.setItem("restaurantName", restaurantSettings.name);
     localStorage.setItem("restaurantTRN", restaurantSettings.trn);
@@ -165,51 +287,55 @@ const EnhancedPOSSystemWithReceipt = () => {
     setShowSettingsModal(false);
   }, [restaurantSettings]);
 
-  // Add item to cart
   const addToCart = useCallback(
     (item) => {
-      const qty = Number(currentQty || 1);
-      const existingItem = cart.find(
-        (cartItem) => cartItem.itemId === item.ItemId
-      );
-
-      if (existingItem) {
-        setCart((prev) =>
-          prev.map((cartItem) =>
+      const qty = Number(currentQty) || 1;
+      setCart((prev) => {
+        const existingItem = prev.find(
+          (cartItem) => cartItem.itemId === item.ItemId
+        );
+        if (existingItem) {
+          return prev.map((cartItem) =>
             cartItem.itemId === item.ItemId
               ? {
                   ...cartItem,
                   qty: cartItem.qty + qty,
                   amount: (cartItem.qty + qty) * cartItem.rate,
+                  vatAmt: (
+                    (cartItem.qty + qty) *
+                    cartItem.rate *
+                    TAX_RATE
+                  ).toFixed(2),
                 }
               : cartItem
-          )
-        );
-      } else {
-        const newItem = {
-          itemId: item.ItemId,
-          slNo: cart.length + 1,
-          itemCode: item.ItemCode,
-          itemName: item.ItemName,
-          qty,
-          rate: item.Rate,
-          amount: qty * item.Rate,
-          cost: 0, // Adjust based on backend requirements
-          vat: 5, // 5% VAT as per backend
-          vatAmt: (qty * item.Rate * 0.05).toFixed(2),
-          taxLedger: 0,
-          arabic: "",
-          notes: "",
-        };
-        setCart((prev) => [...prev, newItem]);
-      }
+          );
+        }
+        return [
+          ...prev,
+          {
+            itemId: item.ItemId,
+            slNo: prev.length + 1,
+            itemCode: item.ItemCode,
+            itemName: item.ItemName,
+            qty,
+            rate: item.Rate,
+            amount: qty * item.Rate,
+            cost: 0,
+            vat: TAX_RATE * 100,
+            vatAmt: (qty * item.Rate * TAX_RATE).toFixed(2),
+            taxLedger: 0,
+            arabic: "",
+            notes: "",
+          },
+        ];
+      });
       setCurrentQty("1");
       setCurrentItem(null);
+      setSelectedCartItemId(null);
     },
-    [cart, currentQty]
+    [currentQty]
   );
 
-  // Update cart quantity
   const updateCartQty = useCallback((itemId, newQty) => {
     const qty = Number(newQty) || 1;
     setCart((prev) =>
@@ -219,33 +345,43 @@ const EnhancedPOSSystemWithReceipt = () => {
               ...item,
               qty,
               amount: qty * item.rate,
-              vatAmt: (qty * item.rate * 0.05).toFixed(2),
+              vatAmt: (qty * item.rate * TAX_RATE).toFixed(2),
             }
           : item
       )
     );
+    setCurrentQty("1");
+    setSelectedCartItemId(null);
   }, []);
 
-  // Apply current quantity
   const applyCurrentQtyToSelectedItem = useCallback(() => {
-    if (currentItem) {
+    if (selectedCartItemId) {
+      updateCartQty(selectedCartItemId, currentQty);
+    } else if (currentItem) {
       addToCart(currentItem);
     } else if (cart.length > 0) {
       const lastItem = cart[cart.length - 1];
       updateCartQty(lastItem.itemId, currentQty);
     }
-  }, [currentItem, cart, currentQty, addToCart, updateCartQty]);
+  }, [
+    selectedCartItemId,
+    currentQty,
+    currentItem,
+    cart,
+    addToCart,
+    updateCartQty,
+  ]);
 
-  // Remove item from cart
-  const removeCartItem = useCallback((itemId) => {
-    setCart((prev) =>
-      prev
-        .filter((item) => item.itemId !== itemId)
-        .map((item, index) => ({ ...item, slNo: index + 1 }))
-    );
-  }, []);
+  const removeCartItem = useCallback(
+    (itemId) =>
+      setCart((prev) =>
+        prev
+          .filter((item) => item.itemId !== itemId)
+          .map((item, index) => ({ ...item, slNo: index + 1 }))
+      ),
+    []
+  );
 
-  // Append digits to quantity
   const appendToQty = useCallback((digit) => {
     setCurrentQty((prev) => {
       if (digit === "clear") return "1";
@@ -255,31 +391,13 @@ const EnhancedPOSSystemWithReceipt = () => {
     });
   }, []);
 
-  // Calculate totals
-  const getTotal = useCallback(
-    () => cart.reduce((sum, item) => sum + item.amount, 0).toFixed(2),
-    [cart]
-  );
-  const getTaxAmount = useCallback(
-    () => (parseFloat(getTotal()) * 0.05).toFixed(2),
-    [getTotal]
-  );
-  const getFinalTotal = useCallback(
-    () => (parseFloat(getTotal()) + parseFloat(getTaxAmount())).toFixed(2),
-    [getTotal, getTaxAmount]
-  );
-
-  // Clear cart
   const clearCart = useCallback(() => setCart([]), []);
 
-  // Clear all form fields
   const clearAllFields = useCallback(() => {
-    // Generate a new random customer ID
-    const randomId = Math.floor(10000 + Math.random() * 90000);
-
-    setFormData((prev) => ({
-      ...prev,
-      custId: randomId.toString(),
+    generateRandomCustomerId();
+    setFormData({
+      orderNo: String(parseInt(formData.orderNo) + 1),
+      custId: "",
       custName: "",
       flat: "",
       address: "",
@@ -290,16 +408,25 @@ const EnhancedPOSSystemWithReceipt = () => {
       remarks: "",
       total: 0,
       status: "Dine-In",
-    }));
-
+      prefix: "ORD",
+      eDate: formatDate(new Date()),
+      time: formatTime(new Date()),
+      holdedOrder: "0",
+      selectedSeats: "",
+    });
     clearCart();
     setCurrentQty("1");
     setCurrentItem(null);
-  }, [clearCart]);
+    setSelectedCartItemId(null);
+  }, [
+    formData.orderNo,
+    generateRandomCustomerId,
+    formatDate,
+    formatTime,
+    clearCart,
+  ]);
 
-  // Select table
   const selectTable = useCallback((table) => {
-    console.log(table);
     setFormData((prev) => ({
       ...prev,
       tableId: table.tableId,
@@ -309,23 +436,69 @@ const EnhancedPOSSystemWithReceipt = () => {
     setShowTableModal(false);
   }, []);
 
-  // Format date and time
-  const formatDate = (date) =>
-    date
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-  const formatTime = (date) =>
-    date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
+  const selectCustomer = useCallback((customer) => {
+    const address = customer.Add1 || customer.Add2 || customer.Add3 || "";
+    setFormData((prev) => ({
+      ...prev,
+      custId: customer.CustCode,
+      custName: customer.CustName,
+      contact: customer.ContactNo,
+      flat: customer.Add1 || customer.Add2 || "",
+      address,
+    }));
+    setShowCustomerModal(false);
+    setCustomerSearchQuery("");
+  }, []);
 
-  // Filter menu items
+  const selectPendingOrder = useCallback(
+    (order) => {
+      setFormData({
+        orderNo: String(order.OrderNo),
+        custId: String(order.CustId),
+        custName: order.CustName,
+        flat: order.Flat || "",
+        address: order.Address || "",
+        contact: order.Contact || "",
+        delBoy: String(order.DelBoy || "0"),
+        tableId: String(order.tableInfo?.TableId || "0"),
+        tableNo: order.tableInfo?.TableCode || order.TableNo || "",
+        selectedSeats: String(order.tableInfo?.Capacity || ""),
+        remarks: order.OrderRemarks || "",
+        total: order.Total || 0,
+        status:
+          REVERSE_ORDER_TYPE_MAP[order.Options] || order.Status || "Dine-In",
+        prefix: order.Prefix || "ORD",
+        eDate: formatDate(new Date(order.EDate)),
+        time: order.Time,
+        holdedOrder: String(order.OrderNo),
+      });
+
+      setCart(
+        order.orderDetails.map((item, index) => ({
+          itemId: item.ItemCode || `temp-${index}`,
+          slNo: item.SlNo,
+          itemCode: item.ItemCode,
+          itemName: item.ItemName,
+          qty: item.Qty,
+          rate: item.Rate,
+          amount: item.Amount,
+          cost: item.Cost,
+          vat: TAX_RATE * 100,
+          vatAmt: item.VatAmt,
+          taxLedger: item.TaxLedger || "0",
+          arabic: "",
+          notes: item.OrderDetailNotes || "",
+        }))
+      );
+
+      setCurrentQty("1");
+      setCurrentItem(null);
+      setSelectedCartItemId(null);
+      setShowKOTModal(false);
+    },
+    [formatDate]
+  );
+
   const filteredMenuItems = useMemo(() => {
     if (searchQuery) {
       return items.filter(
@@ -342,100 +515,101 @@ const EnhancedPOSSystemWithReceipt = () => {
     );
   }, [searchQuery, items, activeCategory, categories]);
 
-  // Handle receipt printing
-  const handlePrintReceipt = useCallback(() => {
-    setShowReceiptModal(true);
-  }, []);
+  const filteredCustomers = useMemo(() => {
+    if (customerSearchQuery) {
+      return customers.filter(
+        (customer) =>
+          customer.CustName.toLowerCase().includes(
+            customerSearchQuery.toLowerCase()
+          ) || customer.ContactNo.includes(customerSearchQuery)
+      );
+    }
+    return customers;
+  }, [customerSearchQuery, customers]);
 
-  // Handle save order
-  const handleSaveOrder = useCallback(
-    async (fromPrint = false) => {
-      if (cart.length === 0) {
-        setError("Cart is empty. Add items to save the order.");
-        return;
-      }
+  const handleSaveOrder = useCallback(async () => {
+    if (cart.length === 0) {
+      setError("Cart is empty. Add items to save the order.");
+      return;
+    }
 
-      const orderTypeMap = {
-        "Dine-In": 2,
-        Takeaway: 3,
-        Delivery: 1,
-      };
+    const orderData = {
+      orderNo: formData.orderNo,
+      status: formData.holdedOrder === "0" ? "NEW" : "UPDATED",
+      date: formData.eDate,
+      time: formData.time,
+      option: ORDER_TYPE_MAP[formData.status],
+      custId: formData.custId || "0",
+      custName: formData.custName || "",
+      flatNo: formData.flat || "",
+      address: formData.address || "",
+      contact: formData.contact || "",
+      deliveryBoyId: formData.delBoy || "0",
+      tableId: formData.tableId || "0",
+      tableNo: formData.tableNo || "",
+      remarks: formData.remarks || "",
+      total: parseFloat(getFinalTotal),
+      prefix: formData.prefix,
+      items: cart.map((item) => ({
+        slNo: item.slNo,
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        qty: item.qty,
+        rate: item.rate,
+        amount: item.amount,
+        cost: item.cost,
+        vat: item.vat,
+        vatAmt: item.vatAmt,
+        taxLedger: item.taxLedger,
+        arabic: item.arabic,
+        notes: item.notes,
+      })),
+      holdedOrder: formData.holdedOrder,
+      tokenNo: tokenCounts[formData.status]?.nextToken || 1, // Add tokenNo to orderData
+    };
 
-      const orderData = {
-        orderNo: formData.orderNo,
-        status: "NEW", // Set status based on context
-        date: formData.eDate,
-        time: formData.time,
-        option: orderTypeMap[formData.status],
-        custId: formData.custId || "0",
-        custName: formData.custName || "",
-        flatNo: formData.flat || "",
-        address: formData.address || "",
-        contact: formData.contact || "",
-        deliveryBoyId: formData.delBoy || "0",
-        tableId: formData.tableId || "0",
-        tableNo: formData.tableNo || "",
-        remarks: formData.remarks || "",
-        total: parseFloat(getFinalTotal()),
-        prefix: formData.prefix,
-        items: cart.map((item) => ({
-          slNo: item.slNo,
-          itemCode: item.itemCode,
-          itemName: item.itemName,
-          qty: item.qty,
-          rate: item.rate,
-          amount: item.amount,
-          cost: item.cost,
-          vat: item.vat,
-          vatAmt: item.vatAmt,
-          taxLedger: item.taxLedger,
-          arabic: item.arabic,
-          notes: item.notes,
-        })),
-        holdedOrder: formData.holdedOrder,
-      };
+    setLoading(true);
+    try {
+      await axios.post("/orders", orderData);
+      setShowReceiptModal(true);
 
-      setLoading(true);
-      try {
-        const response = await axios.post("/orders", orderData);
-        setCart([]);
-        // Generate a new random customer ID
-        const randomId = Math.floor(10000 + Math.random() * 90000);
+      const [
+        orderResponse,
+        customersResponse,
+        pendingOrdersResponse,
+        tokenCountsResponse,
+      ] = await Promise.all([
+        axios
+          .get("/order/latest")
+          .catch(() => ({ data: { data: { orderNo: "0" } } })),
+        axios
+          .get("/customers", { params: { search: "", limit: 100, offset: 0 } })
+          .catch(() => ({ data: { data: [] } })),
+        axios.get("/pending").catch(() => ({ data: { data: [] } })),
+        axios.get("/token-counts").catch(() => ({ data: { data: {} } })), // Refresh token counts
+      ]);
 
-        setFormData((prev) => ({
-          ...prev,
-          orderNo: String(parseInt(prev.orderNo) + 1),
-          custId: randomId.toString(),
-          custName: "",
-          flat: "",
-          address: "",
-          contact: "",
-          delBoy: "",
-          tableId: "",
-          tableNo: "",
-          remarks: "",
-          total: 0,
-          status: "Dine-In",
-          eDate: formatDate(new Date()),
-          time: formatTime(new Date()),
-          holdedOrder: "0",
-        }));
+      setFormData((prev) => ({
+        ...prev,
+        orderNo: String(parseInt(orderResponse.data.data.orderNo || "0") + 1),
+        holdedOrder: "0",
+      }));
+      setCustomers(customersResponse.data.data);
+      setPendingOrders(pendingOrdersResponse.data.data);
+      setTokenCounts(tokenCountsResponse.data.data); // Update token counts
+
+      setTimeout(() => {
+        window.print();
+        clearAllFields();
         setShowReceiptModal(false);
-        setShowReceipt(false);
+      }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to save order.");
+    } finally {
+      setLoading(false);
+    }
+  }, [cart, formData, getFinalTotal, clearAllFields, tokenCounts]);
 
-        alert("Order saved successfully!");
-        return response.data.data.orderNo;
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to save order.");
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [cart, formData, getFinalTotal]
-  );
-
-  // Handle category click
   const handleCategoryClick = useCallback(
     async (categoryName) => {
       setActiveCategory(categoryName);
@@ -449,7 +623,6 @@ const EnhancedPOSSystemWithReceipt = () => {
         setItems(response.data.data);
       } catch (err) {
         setError("Failed to fetch items for category.");
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -457,14 +630,14 @@ const EnhancedPOSSystemWithReceipt = () => {
     [categories]
   );
 
-  // Handle search
-  const handleSearch = useCallback((query) => {
-    setSearchQuery(query);
-  }, []);
+  const handleSearch = useCallback((query) => setSearchQuery(query), []);
+  const handleCustomerSearch = useCallback(
+    (query) => setCustomerSearchQuery(query),
+    []
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-      {/* Header */}
       <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center space-x-3">
           <svg
@@ -473,6 +646,7 @@ const EnhancedPOSSystemWithReceipt = () => {
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -493,6 +667,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -510,6 +685,7 @@ const EnhancedPOSSystemWithReceipt = () => {
             onClick={() => setShowSettingsModal(true)}
             className="p-2 rounded-full hover:bg-blue-600 transition-colors"
             title="Settings"
+            aria-label="Open settings"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -517,6 +693,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -536,6 +713,7 @@ const EnhancedPOSSystemWithReceipt = () => {
             onClick={handleLogout}
             className="p-2 rounded-full hover:bg-blue-600 transition-colors"
             title="Logout"
+            aria-label="Logout"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -543,6 +721,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -558,11 +737,8 @@ const EnhancedPOSSystemWithReceipt = () => {
         </div>
       </div>
 
-      {/* Main Layout */}
       <div className="flex flex-col md:flex-row h-[calc(100vh-72px)]">
-        {/* Left Section - Order Details and Cart */}
         <div className="w-full md:w-1/2 p-4 overflow-auto bg-gray-100">
-          {/* Order Information */}
           <div className="bg-white p-4 rounded-xl shadow-md mb-4 border-l-4 border-blue-500">
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-lg font-semibold text-blue-800">
@@ -575,6 +751,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                 <button
                   className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium"
                   onClick={clearAllFields}
+                  aria-label="Clear all fields"
                 >
                   Clear All
                 </button>
@@ -582,34 +759,72 @@ const EnhancedPOSSystemWithReceipt = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="custId"
+                >
                   Customer ID
                 </label>
-                <input
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                  value={formData.custId}
-                  readOnly
-                  placeholder="Auto-generated"
-                />
+                <div className="flex items-center space-x-2">
+                  <input
+                    id="custId"
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                    value={formData.custId}
+                    readOnly
+                    placeholder="Auto-generated"
+                    aria-readonly="true"
+                  />
+                  <button
+                    className="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-600 flex items-center"
+                    onClick={() => setShowCustomerModal(true)}
+                    aria-label="Search customers"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    Search
+                  </button>
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="custName"
+                >
                   Customer Name
                 </label>
                 <input
+                  id="custName"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.custName}
                   onChange={(e) =>
                     handleInputChange("custName", e.target.value)
                   }
                   placeholder="Enter customer name"
+                  aria-required="true"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="contact"
+                >
                   Contact No
                 </label>
                 <input
+                  id="contact"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.contact}
                   onChange={(e) => handleInputChange("contact", e.target.value)}
@@ -617,10 +832,14 @@ const EnhancedPOSSystemWithReceipt = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="flat"
+                >
                   Flat No
                 </label>
                 <input
+                  id="flat"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.flat}
                   onChange={(e) => handleInputChange("flat", e.target.value)}
@@ -628,10 +847,14 @@ const EnhancedPOSSystemWithReceipt = () => {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="address"
+                >
                   Address
                 </label>
                 <input
+                  id="address"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.address}
                   onChange={(e) => handleInputChange("address", e.target.value)}
@@ -639,10 +862,14 @@ const EnhancedPOSSystemWithReceipt = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  htmlFor="delBoy"
+                >
                   Assigned Staff
                 </label>
                 <select
+                  id="delBoy"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.delBoy}
                   onChange={(e) => handleInputChange("delBoy", e.target.value)}
@@ -657,12 +884,12 @@ const EnhancedPOSSystemWithReceipt = () => {
               </div>
             </div>
 
-            {/* Table selection - Only show when Dine In is selected */}
             {formData.status === "Dine-In" && (
               <div className="mt-4 flex items-center space-x-4">
                 <button
                   className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 flex items-center"
                   onClick={() => setShowTableModal(true)}
+                  aria-label="Select table"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -670,6 +897,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
+                    aria-hidden="true"
                   >
                     <path
                       strokeLinecap="round"
@@ -682,25 +910,35 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </button>
                 <div className="flex-1 flex items-center space-x-4">
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                    <label
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                      htmlFor="tableNo"
+                    >
                       Table No
                     </label>
                     <input
+                      id="tableNo"
                       className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50"
                       value={formData.tableNo}
                       readOnly
                       placeholder="--"
+                      aria-readonly="true"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                    <label
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                      htmlFor="selectedSeats"
+                    >
                       Seats
                     </label>
                     <input
+                      id="selectedSeats"
                       className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50"
                       value={formData.selectedSeats || "--"}
                       readOnly
                       placeholder="--"
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
@@ -708,7 +946,6 @@ const EnhancedPOSSystemWithReceipt = () => {
             )}
           </div>
 
-          {/* Cart Table */}
           <div className="bg-white rounded-xl shadow-md mb-4 border-l-4 border-blue-500">
             <div className="bg-blue-50 p-3 flex justify-between items-center">
               <h2 className="text-lg font-semibold text-blue-800 flex items-center">
@@ -718,6 +955,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -731,6 +969,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               <button
                 onClick={clearCart}
                 className="bg-red-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-red-600 flex items-center"
+                aria-label="Clear cart"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -738,6 +977,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -775,17 +1015,38 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {cart.map((item) => (
-                    <tr key={item.itemId} className="hover:bg-blue-50">
+                    <tr
+                      key={item.itemId}
+                      className={`hover:bg-blue-50 cursor-pointer ${
+                        selectedCartItemId === item.itemId ? "bg-blue-100" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedCartItemId(item.itemId);
+                        setCurrentQty(String(item.qty));
+                        setCurrentItem(null);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          setSelectedCartItemId(item.itemId);
+                          setCurrentQty(String(item.qty));
+                          setCurrentItem(null);
+                        }
+                      }}
+                    >
                       <td className="px-3 py-2">{item.slNo}</td>
                       <td className="px-3 py-2">{item.itemName}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center space-x-1">
                           <button
                             className="bg-gray-200 text-gray-700 px-2 py-1 rounded-l-lg hover:bg-gray-300"
-                            onClick={() =>
-                              updateCartQty(item.itemId, item.qty - 1)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateCartQty(item.itemId, item.qty - 1);
+                            }}
                             disabled={item.qty <= 1}
+                            aria-label={`Decrease quantity for ${item.itemName}`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -793,6 +1054,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
+                              aria-hidden="true"
                             >
                               <path
                                 strokeLinecap="round"
@@ -802,7 +1064,6 @@ const EnhancedPOSSystemWithReceipt = () => {
                               />
                             </svg>
                           </button>
-
                           <input
                             type="number"
                             className="w-10 text-center bg-gray-100 border-t border-b border-gray-200"
@@ -810,13 +1071,17 @@ const EnhancedPOSSystemWithReceipt = () => {
                             onChange={(e) =>
                               updateCartQty(item.itemId, e.target.value)
                             }
+                            onClick={(e) => e.stopPropagation()}
                             min="1"
+                            aria-label={`Quantity for ${item.itemName}`}
                           />
                           <button
                             className="bg-gray-200 text-gray-700 px-2 py-1 rounded-r-lg hover:bg-gray-300"
-                            onClick={() =>
-                              updateCartQty(item.itemId, item.qty + 1)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateCartQty(item.itemId, item.qty + 1);
+                            }}
+                            aria-label={`Increase quantity for ${item.itemName}`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -824,6 +1089,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
+                              aria-hidden="true"
                             >
                               <path
                                 strokeLinecap="round"
@@ -840,7 +1106,11 @@ const EnhancedPOSSystemWithReceipt = () => {
                       <td className="px-3 py-2">
                         <button
                           className="text-red-500 hover:text-red-700"
-                          onClick={() => removeCartItem(item.itemId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCartItem(item.itemId);
+                          }}
+                          aria-label={`Remove ${item.itemName} from cart`}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -848,6 +1118,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
+                            aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
@@ -874,7 +1145,6 @@ const EnhancedPOSSystemWithReceipt = () => {
               </table>
             </div>
 
-            {/* Totals and Actions */}
             <div className="p-4 bg-gray-50 border-t border-gray-200">
               <div className="flex flex-col space-y-2">
                 <div className="flex justify-between items-center">
@@ -882,15 +1152,15 @@ const EnhancedPOSSystemWithReceipt = () => {
                     Subtotal:
                   </span>
                   <span className="text-sm font-medium text-gray-800">
-                    {getTotal()} AED
+                    {getTotal} AED
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">
-                    VAT (5%):
+                    VAT ({TAX_RATE * 100}%):
                   </span>
                   <span className="text-sm font-medium text-gray-800">
-                    {getTaxAmount()} AED
+                    {getTaxAmount} AED
                   </span>
                 </div>
                 <div className="flex justify-between items-center border-t border-gray-200 pt-2 mt-1">
@@ -898,113 +1168,81 @@ const EnhancedPOSSystemWithReceipt = () => {
                     Total:
                   </span>
                   <span className="text-base font-bold text-blue-700">
-                    {getFinalTotal()} AED
+                    {getFinalTotal} AED
                   </span>
                 </div>
               </div>
 
-              {/* Order Type Selection */}
               <div className="mt-4">
-                <label className="block text-xs font-medium text-gray-600 mb-2">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-2"
+                  htmlFor="orderType"
+                >
                   Order Type
                 </label>
                 <div className="flex space-x-3">
-                  <button
-                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
-                      formData.status === "Dine-In"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                    onClick={() => handleInputChange("status", "Dine-In")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                  {["Dine-In", "Takeaway", "Delivery"].map((type) => (
+                    <button
+                      key={type}
+                      className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
+                        formData.status === type
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                      onClick={() => handleInputChange("status", type)}
+                      aria-label={`Select ${type} order type`}
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                      />
-                    </svg>
-                    Dine-In
-                  </button>
-                  <button
-                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
-                      formData.status === "Takeaway"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                    onClick={() => handleInputChange("status", "Takeaway")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                      />
-                    </svg>
-                    Takeaway
-                  </button>
-                  <button
-                    className={`px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center ${
-                      formData.status === "Delivery"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                    onClick={() => handleInputChange("status", "Delivery")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
-                      />
-                    </svg>
-                    Delivery
-                  </button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 mr-1"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d={
+                            type === "Dine-In"
+                              ? "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                              : type === "Takeaway"
+                              ? "M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                              : "M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
+                          }
+                        />
+                      </svg>
+                      {type}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Additional Notes */}
               <div className="mt-4">
-                <label className="block text-xs font-medium text-gray-600 mb-2">
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-2"
+                  htmlFor="remarks"
+                >
                   Special Instructions
                 </label>
                 <textarea
+                  id="remarks"
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   value={formData.remarks}
                   onChange={(e) => handleInputChange("remarks", e.target.value)}
                   rows="2"
                   placeholder="Add any special instructions here..."
+                  aria-label="Special instructions"
                 ></textarea>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex space-x-3 mt-6">
                 <button
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-green-700 flex items-center justify-center"
-                  onClick={() => handleSaveOrder(false)}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-green-700 flex items-center justify-center disabled:bg-gray-400"
+                  onClick={handleSaveOrder}
                   disabled={cart.length === 0 || loading}
+                  aria-label="Save order"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1012,6 +1250,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
+                    aria-hidden="true"
                   >
                     <path
                       strokeLinecap="round"
@@ -1022,38 +1261,12 @@ const EnhancedPOSSystemWithReceipt = () => {
                   </svg>
                   {loading ? "Saving..." : "Save Order"}
                 </button>
-                {(formData.status !== "Dine-In" ||
-                  (formData.status === "Dine-In" && formData.tableNo)) && (
-                  <button
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-blue-700 flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    onClick={handlePrintReceipt}
-                    disabled={cart.length === 0 || loading}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                      />
-                    </svg>
-                    Print Receipt
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Section - Menu and Calculator */}
         <div className="w-full md:w-1/2 p-4 overflow-auto bg-gray-200">
-          {/* Search and Category Filter */}
           <div className="bg-white p-4 rounded-xl shadow-md mb-4">
             <div className="relative mb-4">
               <input
@@ -1062,6 +1275,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                 placeholder="Search items by name or code..."
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
+                aria-label="Search items"
               />
               <div className="absolute left-3 top-2.5 text-gray-400">
                 <svg
@@ -1070,6 +1284,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -1083,6 +1298,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                 <button
                   className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                   onClick={() => handleSearch("")}
+                  aria-label="Clear search"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1090,6 +1306,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
+                    aria-hidden="true"
                   >
                     <path
                       strokeLinecap="round"
@@ -1102,7 +1319,6 @@ const EnhancedPOSSystemWithReceipt = () => {
               )}
             </div>
 
-            {/* Category Pills */}
             <div className="flex overflow-x-auto py-2 space-x-2 hide-scrollbar">
               {categories.map((category) => (
                 <button
@@ -1113,6 +1329,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                   }`}
                   onClick={() => handleCategoryClick(category.name)}
+                  aria-label={`Select category ${category.name}`}
                 >
                   {category.name}
                 </button>
@@ -1120,7 +1337,6 @@ const EnhancedPOSSystemWithReceipt = () => {
             </div>
           </div>
 
-          {/* Menu Items Grid */}
           <div className="bg-white p-4 rounded-xl shadow-md mb-4">
             <h2 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
               <svg
@@ -1129,6 +1345,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -1156,8 +1373,19 @@ const EnhancedPOSSystemWithReceipt = () => {
                   className="border border-gray-200 rounded-lg p-3 hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors"
                   onClick={() => {
                     setCurrentItem(item);
+                    setSelectedCartItemId(null);
                     addToCart(item);
                   }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      setCurrentItem(item);
+                      setSelectedCartItemId(null);
+                      addToCart(item);
+                    }
+                  }}
+                  aria-label={`Add ${item.ItemName} to cart`}
                 >
                   <div className="font-medium text-sm text-gray-800 mb-1 truncate">
                     {item.ItemName}
@@ -1178,327 +1406,411 @@ const EnhancedPOSSystemWithReceipt = () => {
             </div>
           </div>
 
-          {/* Number Pad for Quantity */}
-          <div className="bg-white rounded-xl shadow-md">
-            <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-blue-800">
-                Quantity Input
-              </h2>
-              <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-lg font-bold">
-                {currentQty}
+          <div className="bg-white rounded-xl shadow-md flex flex-col md:flex-row">
+            <div className="md:w-1/2 p-4">
+              <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-blue-800">
+                  Quantity
+                </h2>
+                <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-lg font-bold">
+                  {currentQty}
+                </div>
+              </div>
+              <div className="p-4 grid grid-cols-3 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, ".", 0, "00"].map((num) => (
+                  <button
+                    key={num}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-lg text-lg transition-colors"
+                    onClick={() => appendToQty(num)}
+                    aria-label={`Add ${num} to quantity`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-3">
+                <button
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
+                  onClick={() => appendToQty("clear")}
+                  aria-label="Clear quantity"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Clear
+                </button>
+                <button
+                  className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
+                  onClick={applyCurrentQtyToSelectedItem}
+                  aria-label="Apply quantity"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  Apply
+                </button>
               </div>
             </div>
-            <div className="p-4 grid grid-cols-3 gap-3">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, ".", 0, "00"].map((num) => (
+
+            <div className="md:w-1/2 p-4 border-l border-gray-200">
+              <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-blue-800">
+                  KOT Addition
+                </h2>
                 <button
-                  key={num}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-lg text-lg transition-colors"
-                  onClick={() => appendToQty(num)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-600 flex items-center"
+                  onClick={() => setShowKOTModal(true)}
+                  aria-label="View pending KOT orders"
                 >
-                  {num}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  View KOT
                 </button>
-              ))}
-            </div>
-            <div className="p-4 grid grid-cols-2 gap-3">
-              <button
-                className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
-                onClick={() => appendToQty("clear")}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Clear
-              </button>
-              <button
-                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg text-lg flex items-center justify-center transition-colors"
-                onClick={applyCurrentQtyToSelectedItem}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Apply
-              </button>
+              </div>
+              <div className="p-4">
+                {modalLoading ? (
+                  <div className="text-center py-4">Loading...</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 max-h-64 overflow-y-auto">
+                    {pendingOrders.map((order) => (
+                      <button
+                        key={order.OrderNo}
+                        className="p-4 rounded-lg border-2 flex flex-col items-start justify-center hover:bg-blue-50 transition-colors border-blue-200"
+                        onClick={() => selectPendingOrder(order)}
+                        aria-label={`Select order ${order.OrderNo}`}
+                      >
+                        <div className="text-xl font-bold text-blue-800 mb-1">
+                          T{order.TableNo}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Order #{order.OrderNo}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {order.CustName}
+                        </div>
+                        <div className="text-sm font-bold text-blue-700">
+                          {order.Total.toFixed(2)} AED
+                        </div>
+                      </button>
+                    ))}
+                    {pendingOrders.length === 0 && !loading && (
+                      <div className="col-span-2 text-center py-4 text-gray-500">
+                        No pending orders found.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Table Selection Modal */}
-      {showTableModal && (
-        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-blue-800">
-                Select a Table
-              </h2>
+      <Modal
+        isOpen={showTableModal}
+        onClose={() => setShowTableModal(false)}
+        title="Select a Table"
+      >
+        {modalLoading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-96 overflow-y-auto">
+            {tables.map((table) => (
               <button
-                onClick={() => setShowTableModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                key={table.Id}
+                className={`p-4 rounded-lg border-2 flex flex-col items-center justify-center hover:bg-blue-50 transition-colors ${
+                  table.Status === "OCCUPIED"
+                    ? "border-red-300 bg-red-50"
+                    : "border-green-300 bg-green-50 hover:border-green-400"
+                }`}
+                onClick={() => selectTable(table)}
+                disabled={table.Status === "OCCUPIED"}
+                aria-label={`Select table ${table.Code}`}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <div className="text-2xl font-bold mb-1">T{table.Code}</div>
+                <div className="text-xs uppercase font-medium mb-1">
+                  {table.Status}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">{table.Capacity}</span> seats
+                </div>
               </button>
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-96 overflow-y-auto">
-              {tables.map((table) => (
-                <button
-                  key={table.Id}
-                  className={`p-4 rounded-lg border-2 flex flex-col items-center justify-center hover:bg-blue-50 transition-colors ${
-                    table.Status === "OCCUPIED"
-                      ? "border-red-300 bg-red-50"
-                      : "border-green-300 bg-green-50 hover:border-green-400"
-                  }`}
-                  onClick={() => selectTable(table)}
-                  disabled={table.Status === "OCCUPIED"}
-                >
-                  <div className="text-2xl font-bold mb-1">T{table.Code}</div>
-                  <div className="text-xs uppercase font-medium mb-1">
-                    {table.Status}
-                  </div>
-                  <div className="text-sm">
-                    <span className="font-medium">{table.Capacity}</span> seats
-                  </div>
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Settings Modal */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-blue-800">
-                Restaurant Settings
-              </h2>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Restaurant Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  value={restaurantSettings.name}
-                  onChange={(e) => handleSettingsChange("name", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  TRN Number
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  value={restaurantSettings.trn}
-                  onChange={(e) => handleSettingsChange("trn", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  value={restaurantSettings.phone}
-                  onChange={(e) =>
-                    handleSettingsChange("phone", e.target.value)
-                  }
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Address
-                </label>
-                <textarea
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  value={restaurantSettings.address}
-                  onChange={(e) =>
-                    handleSettingsChange("address", e.target.value)
-                  }
-                  rows="2"
-                ></textarea>
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                <button
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-lg text-sm flex-1"
-                  onClick={() => setShowSettingsModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1"
-                  onClick={saveSettings}
-                >
-                  Save Settings
-                </button>
-              </div>
-            </div>
+      <Modal
+        isOpen={showCustomerModal}
+        onClose={() => setShowCustomerModal(false)}
+        title="Select a Customer"
+      >
+        <div className="relative mb-4">
+          <input
+            type="text"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Search customers by name or phone..."
+            value={customerSearchQuery}
+            onChange={(e) => handleCustomerSearch(e.target.value)}
+            aria-label="Search customers"
+          />
+          <div className="absolute left-3 top-2.5 text-gray-400">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
           </div>
-        </div>
-      )}
-
-      {/* Receipt Modal */}
-      {showReceiptModal && (
-        <div className="fixed inset-0 bg-white/40 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-blue-800">
-                Preview Receipt
-              </h2>
-              <button
-                onClick={() => {
-                  setShowReceiptModal(false);
-                  setShowReceipt(false);
-                }}
-                className="text-gray-500 hover:text-gray-700"
+          {customerSearchQuery && (
+            <button
+              className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              onClick={() => handleCustomerSearch("")}
+              aria-label="Clear customer search"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex-1 flex items-center justify-center"
-                onClick={() => setShowReceipt(true)}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                  />
-                </svg>
-                Print
-              </button>
-              <button
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex-1 flex items-center justify-center"
-                onClick={() => {
-                  setShowReceipt(!showReceipt);
-                  handleSaveOrder(true);
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Save & Print
-              </button>
-            </div>
-            {showReceipt && (
-              <div className="print-only">
-                <ReceiptTemplate
-                  order={{
-                    orderNo: formData.orderNo,
-                    date: formData.eDate,
-                    time: formData.time,
-                    status: formData.status,
-                    tableNo: formData.tableNo,
-                    custName: formData.custName,
-                    custId: formData.custId,
-                    items: cart,
-                    subTotal: getTotal(),
-                    taxAmount: getTaxAmount(),
-                    totalAmount: getFinalTotal(),
-                  }}
-                  restaurant={restaurantSettings}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
                 />
+              </svg>
+            </button>
+          )}
+        </div>
+        {modalLoading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+            {filteredCustomers.map((customer) => (
+              <button
+                key={customer.CustCode}
+                className="p-4 rounded-lg border-2 flex flex-col items-start justify-center hover:bg-blue-50 transition-colors border-blue-200"
+                onClick={() => selectCustomer(customer)}
+                aria-label={`Select customer ${customer.CustName}`}
+              >
+                <div className="text-lg font-bold mb-1">
+                  {customer.CustName}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {customer.ContactNo}
+                </div>
+                <div className="text-sm text-gray-500">
+                  {customer.Add1 ||
+                    customer.Add2 ||
+                    customer.Add3 ||
+                    "No address"}
+                </div>
+              </button>
+            ))}
+            {filteredCustomers.length === 0 && !loading && (
+              <div className="col-span-3 text-center py-4 text-gray-500">
+                No customers found. Try a different search.
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Error Toast */}
+      <Modal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        title="Restaurant Settings"
+      >
+        <div className="space-y-4">
+          <div>
+            <label
+              className="block text-sm font-medium text-gray-700 mb-1"
+              htmlFor="restaurantName"
+            >
+              Restaurant Name
+            </label>
+            <input
+              id="restaurantName"
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={restaurantSettings.name}
+              onChange={(e) => handleSettingsChange("name", e.target.value)}
+              aria-required="true"
+            />
+          </div>
+          <div>
+            <label
+              className="block text-sm font-medium text-gray-700 mb-1"
+              htmlFor="trn"
+            >
+              TRN Number
+            </label>
+            <input
+              id="trn"
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={restaurantSettings.trn}
+              onChange={(e) => handleSettingsChange("trn", e.target.value)}
+            />
+          </div>
+          <div>
+            <label
+              className="block text-sm font-medium text-gray-700 mb-1"
+              htmlFor="phone"
+            >
+              Phone Number
+            </label>
+            <input
+              id="phone"
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={restaurantSettings.phone}
+              onChange={(e) => handleSettingsChange("phone", e.target.value)}
+            />
+          </div>
+          <div>
+            <label
+              className="block text-sm font-medium text-gray-700 mb-1"
+              htmlFor="restaurantAddress"
+            >
+              Address
+            </label>
+            <input
+              id="restaurantAddress"
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={restaurantSettings.address}
+              onChange={(e) => handleSettingsChange("address", e.target.value)}
+            />
+          </div>
+          <button
+            className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+            onClick={saveSettings}
+            aria-label="Save settings"
+          >
+            Save Settings
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        title="Preview Receipt"
+      >
+        <div className="print-only">
+          <ReceiptTemplate
+            order={{
+              orderNo: formData.orderNo,
+              date: formData.eDate,
+              delBoy:
+                employees.find(
+                  (emp) => emp.Code?.toString() === formData.delBoy.toString()
+                )?.EmpName || "--",
+              time: formData.time,
+              remark: formData.remarks,
+              status: formData.status,
+              tableNo: formData.tableNo,
+              custName: formData.custName,
+              custId: formData.custId,
+              items: cart,
+              subTotal: getTotal,
+              taxAmount: getTaxAmount,
+              totalAmount: getFinalTotal,
+              tokenNo: tokenCounts[formData.status]?.nextToken || 1, // Pass tokenNo to ReceiptTemplate
+            }}
+            restaurant={restaurantSettings}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showKOTModal}
+        onClose={() => setShowKOTModal(false)}
+        title="Pending KOT Orders"
+      >
+        {modalLoading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
+            {pendingOrders.map((order) => (
+              <button
+                key={order.OrderNo}
+                className="p-4 rounded-lg border-2 flex flex-col items-start justify-center hover:bg-blue-50 transition-colors border-blue-200"
+                onClick={() => selectPendingOrder(order)}
+                aria-label={`Select order ${order.OrderNo}`}
+              >
+                <div className="text-xl font-bold text-blue-800 mb-1">
+                  T{order.TableNo}
+                </div>
+                <div className="text-sm text-gray-600">
+                  Order #{order.OrderNo}
+                </div>
+                <div className="text-sm text-gray-600">{order.CustName}</div>
+                <div className="text-sm font-bold text-blue-700">
+                  {order.Total.toFixed(2)} AED
+                </div>
+              </button>
+            ))}
+            {pendingOrders.length === 0 && !loading && (
+              <div className="col-span-4 text-center py-4 text-gray-500">
+                No pending orders found.
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
       {error && (
         <div className="fixed bottom-4 right-4 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center">
           <svg
@@ -1507,6 +1819,7 @@ const EnhancedPOSSystemWithReceipt = () => {
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -1519,6 +1832,7 @@ const EnhancedPOSSystemWithReceipt = () => {
           <button
             className="ml-4 text-white hover:text-gray-200"
             onClick={() => setError(null)}
+            aria-label="Dismiss error"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1526,6 +1840,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
