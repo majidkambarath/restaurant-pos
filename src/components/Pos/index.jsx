@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import ReceiptTemplate from "./ReceiptTemplate"; // Ensure this component exists and accepts tokenNo prop
+import ReceiptTemplate from "./ReceiptTemplate"; // Ensure this component accepts tokenNo and newItems props
 import axios from "../../api/axios";
 
 // Constants
@@ -23,40 +23,47 @@ const useDebounce = (value, delay) => {
   }, [value, delay]);
   return debouncedValue;
 };
+
 // Reusable Modal Component
-const Modal = React.memo(({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-white/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-blue-800">{title}</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-            aria-label="Close modal"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+const Modal = React.memo(
+  ({ isOpen, onClose, title, children, hide = false }) => {
+    if (!isOpen) return null;
+    return (
+      <div
+        className={`fixed inset-0 bg-white/50 flex items-center justify-center z-50 ${
+          hide ? "hidden" : ""
+        }`}
+      >
+        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-blue-800">{title}</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+              aria-label="Close modal"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 
 const EnhancedPOSSystemWithReceipt = () => {
   const navigate = useNavigate();
@@ -86,6 +93,7 @@ const EnhancedPOSSystemWithReceipt = () => {
     address: localStorage.getItem("restaurantAddress") || "",
   });
   const [cart, setCart] = useState([]);
+  const [newItems, setNewItems] = useState([]); // New state for tracking newly added items
   const [currentQty, setCurrentQty] = useState("1");
   const [selectedCartItemId, setSelectedCartItemId] = useState(null);
   const [currentItem, setCurrentItem] = useState(null);
@@ -103,7 +111,7 @@ const EnhancedPOSSystemWithReceipt = () => {
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [tokenCounts, setTokenCounts] = useState({}); // New state for token counts
+  const [tokenCounts, setTokenCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -176,7 +184,7 @@ const EnhancedPOSSystemWithReceipt = () => {
           employeesResponse,
           customersResponse,
           pendingOrdersResponse,
-          tokenCountsResponse, // Added token counts API call
+          tokenCountsResponse,
         ] = await Promise.all([
           axios
             .get("/order/latest")
@@ -193,7 +201,7 @@ const EnhancedPOSSystemWithReceipt = () => {
             })
             .catch(() => ({ data: { data: [] } })),
           axios.get("/pending").catch(() => ({ data: { data: [] } })),
-          axios.get("/token-counts").catch(() => ({ data: { data: {} } })), // Fetch token counts
+          axios.get("/token-counts").catch(() => ({ data: { data: {} } })),
         ]);
 
         setFormData((prev) => ({
@@ -214,7 +222,7 @@ const EnhancedPOSSystemWithReceipt = () => {
         setEmployees(employeesResponse.data.data);
         setCustomers(customersResponse.data.data);
         setPendingOrders(pendingOrdersResponse.data.data);
-        setTokenCounts(tokenCountsResponse.data.data); // Store token counts
+        setTokenCounts(tokenCountsResponse.data.data);
       } catch (err) {
         setError("Failed to fetch initial data.");
       } finally {
@@ -290,6 +298,22 @@ const EnhancedPOSSystemWithReceipt = () => {
   const addToCart = useCallback(
     (item) => {
       const qty = Number(currentQty) || 1;
+      const newCartItem = {
+        itemId: item.ItemId,
+        slNo: cart.length + 1,
+        itemCode: item.ItemCode,
+        itemName: item.ItemName,
+        qty,
+        rate: item.Rate,
+        amount: qty * item.Rate,
+        cost: 0,
+        vat: TAX_RATE * 100,
+        vatAmt: (qty * item.Rate * TAX_RATE).toFixed(2),
+        taxLedger: 0,
+        arabic: "",
+        notes: "",
+      };
+
       setCart((prev) => {
         const existingItem = prev.find(
           (cartItem) => cartItem.itemId === item.ItemId
@@ -310,30 +334,38 @@ const EnhancedPOSSystemWithReceipt = () => {
               : cartItem
           );
         }
-        return [
-          ...prev,
-          {
-            itemId: item.ItemId,
-            slNo: prev.length + 1,
-            itemCode: item.ItemCode,
-            itemName: item.ItemName,
-            qty,
-            rate: item.Rate,
-            amount: qty * item.Rate,
-            cost: 0,
-            vat: TAX_RATE * 100,
-            vatAmt: (qty * item.Rate * TAX_RATE).toFixed(2),
-            taxLedger: 0,
-            arabic: "",
-            notes: "",
-          },
-        ];
+        return [...prev, newCartItem];
       });
+
+      // Add to newItems only if this is a new addition
+      setNewItems((prev) => {
+        const existingNewItem = prev.find(
+          (newItem) => newItem.itemId === item.ItemId
+        );
+        if (existingNewItem) {
+          return prev.map((newItem) =>
+            newItem.itemId === item.ItemId
+              ? {
+                  ...newItem,
+                  qty: newItem.qty + qty,
+                  amount: (newItem.qty + qty) * newItem.rate,
+                  vatAmt: (
+                    (newItem.qty + qty) *
+                    newItem.rate *
+                    TAX_RATE
+                  ).toFixed(2),
+                }
+              : newItem
+          );
+        }
+        return [...prev, { ...newCartItem, slNo: prev.length + 1 }];
+      });
+
       setCurrentQty("1");
       setCurrentItem(null);
       setSelectedCartItemId(null);
     },
-    [currentQty]
+    [cart, currentQty]
   );
 
   const updateCartQty = useCallback((itemId, newQty) => {
@@ -350,6 +382,21 @@ const EnhancedPOSSystemWithReceipt = () => {
           : item
       )
     );
+
+    // Update newItems if the item exists in newItems
+    setNewItems((prev) =>
+      prev.map((item) =>
+        item.itemId === itemId
+          ? {
+              ...item,
+              qty,
+              amount: qty * item.rate,
+              vatAmt: (qty * item.rate * TAX_RATE).toFixed(2),
+            }
+          : item
+      )
+    );
+
     setCurrentQty("1");
     setSelectedCartItemId(null);
   }, []);
@@ -372,15 +419,18 @@ const EnhancedPOSSystemWithReceipt = () => {
     updateCartQty,
   ]);
 
-  const removeCartItem = useCallback(
-    (itemId) =>
-      setCart((prev) =>
-        prev
-          .filter((item) => item.itemId !== itemId)
-          .map((item, index) => ({ ...item, slNo: index + 1 }))
-      ),
-    []
-  );
+  const removeCartItem = useCallback((itemId) => {
+    setCart((prev) =>
+      prev
+        .filter((item) => item.itemId !== itemId)
+        .map((item, index) => ({ ...item, slNo: index + 1 }))
+    );
+    setNewItems((prev) =>
+      prev
+        .filter((item) => item.itemId !== itemId)
+        .map((item, index) => ({ ...item, slNo: index + 1 }))
+    );
+  }, []);
 
   const appendToQty = useCallback((digit) => {
     setCurrentQty((prev) => {
@@ -391,7 +441,10 @@ const EnhancedPOSSystemWithReceipt = () => {
     });
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    setCart([]);
+    setNewItems([]);
+  }, []);
 
   const clearAllFields = useCallback(() => {
     generateRandomCustomerId();
@@ -473,23 +526,24 @@ const EnhancedPOSSystemWithReceipt = () => {
         holdedOrder: String(order.OrderNo),
       });
 
-      setCart(
-        order.orderDetails.map((item, index) => ({
-          itemId: item.ItemCode || `temp-${index}`,
-          slNo: item.SlNo,
-          itemCode: item.ItemCode,
-          itemName: item.ItemName,
-          qty: item.Qty,
-          rate: item.Rate,
-          amount: item.Amount,
-          cost: item.Cost,
-          vat: TAX_RATE * 100,
-          vatAmt: item.VatAmt,
-          taxLedger: item.TaxLedger || "0",
-          arabic: "",
-          notes: item.OrderDetailNotes || "",
-        }))
-      );
+      // Set cart with existing order items
+      const existingItems = order.orderDetails.map((item, index) => ({
+        itemId: item.ItemCode || `temp-${index}`,
+        slNo: item.SlNo,
+        itemCode: item.ItemCode,
+        itemName: item.ItemName,
+        qty: item.Qty,
+        rate: item.Rate,
+        amount: item.Amount,
+        cost: item.Cost,
+        vat: TAX_RATE * 100,
+        vatAmt: item.VatAmt,
+        taxLedger: item.TaxLedger || "0",
+        arabic: "",
+        notes: item.OrderDetailNotes || "",
+      }));
+      setCart(existingItems);
+      setNewItems([]); // Reset newItems to track only new additions
 
       setCurrentQty("1");
       setCurrentItem(null);
@@ -565,13 +619,24 @@ const EnhancedPOSSystemWithReceipt = () => {
         notes: item.notes,
       })),
       holdedOrder: formData.holdedOrder,
-      tokenNo: tokenCounts[formData.status]?.nextToken || 1, // Add tokenNo to orderData
+      tokenNo: tokenCounts[formData.status]?.nextToken || 1,
     };
 
     setLoading(true);
     try {
       await axios.post("/orders", orderData);
       setShowReceiptModal(true);
+
+      // Calculate totals for newItems only for the receipt
+      const newItemsTotal = newItems
+        .reduce((sum, item) => sum + item.amount, 0)
+        .toFixed(2);
+      const newItemsTaxAmount = (parseFloat(newItemsTotal) * TAX_RATE).toFixed(
+        2
+      );
+      const newItemsFinalTotal = (
+        parseFloat(newItemsTotal) + parseFloat(newItemsTaxAmount)
+      ).toFixed(2);
 
       const [
         orderResponse,
@@ -586,7 +651,7 @@ const EnhancedPOSSystemWithReceipt = () => {
           .get("/customers", { params: { search: "", limit: 100, offset: 0 } })
           .catch(() => ({ data: { data: [] } })),
         axios.get("/pending").catch(() => ({ data: { data: [] } })),
-        axios.get("/token-counts").catch(() => ({ data: { data: {} } })), // Refresh token counts
+        axios.get("/token-counts").catch(() => ({ data: { data: {} } })),
       ]);
 
       setFormData((prev) => ({
@@ -596,10 +661,9 @@ const EnhancedPOSSystemWithReceipt = () => {
       }));
       setCustomers(customersResponse.data.data);
       setPendingOrders(pendingOrdersResponse.data.data);
-      setTokenCounts(tokenCountsResponse.data.data); // Update token counts
+      setTokenCounts(tokenCountsResponse.data.data);
 
       setTimeout(() => {
-        window.print();
         clearAllFields();
         setShowReceiptModal(false);
       }, 1000);
@@ -608,7 +672,7 @@ const EnhancedPOSSystemWithReceipt = () => {
     } finally {
       setLoading(false);
     }
-  }, [cart, formData, getFinalTotal, clearAllFields, tokenCounts]);
+  }, [cart, newItems, formData, getFinalTotal, tokenCounts, clearAllFields]);
 
   const handleCategoryClick = useCallback(
     async (categoryName) => {
@@ -635,7 +699,6 @@ const EnhancedPOSSystemWithReceipt = () => {
     (query) => setCustomerSearchQuery(query),
     []
   );
-
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 flex justify-between items-center shadow-lg">
@@ -1241,7 +1304,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                 <button
                   className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex-1 hover:bg-green-700 flex items-center justify-center disabled:bg-gray-400"
                   onClick={handleSaveOrder}
-                  disabled={cart.length === 0 || loading}
+                  disabled={
+                    cart.length === 0 || newItems.length === 0 || loading
+                  }
                   aria-label="Save order"
                 >
                   <svg
@@ -1746,30 +1811,31 @@ const EnhancedPOSSystemWithReceipt = () => {
       <Modal
         isOpen={showReceiptModal}
         onClose={() => setShowReceiptModal(false)}
-        title="Preview Receipt"
+        hide={true}
       >
         <div className="print-only">
           <ReceiptTemplate
             order={{
               orderNo: formData.orderNo,
               date: formData.eDate,
+              time: formData.time,
+              status: formData.status,
+              custName: formData.custName,
+              contact: formData.contact,
               delBoy:
                 employees.find(
                   (emp) => emp.Code?.toString() === formData.delBoy.toString()
                 )?.EmpName || "--",
-              time: formData.time,
-              remark: formData.remarks,
-              status: formData.status,
+              flat: formData.flat,
+              address: formData.address,
+              remarks: formData.remarks,
               tableNo: formData.tableNo,
-              custName: formData.custName,
-              custId: formData.custId,
-              items: cart,
-              subTotal: getTotal,
-              taxAmount: getTaxAmount,
-              totalAmount: getFinalTotal,
-              tokenNo: tokenCounts[formData.status]?.nextToken || 1, // Pass tokenNo to ReceiptTemplate
+              total: parseFloat(getFinalTotal),
+              tokenNo: tokenCounts[formData.status]?.nextToken || 1,
             }}
-            restaurant={restaurantSettings}
+            items={cart}
+            newItems={newItems}
+            restaurantSettings={restaurantSettings}
           />
         </div>
       </Modal>
