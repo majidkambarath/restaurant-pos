@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import ReceiptTemplate from "./ReceiptTemplate"; // Ensure this component accepts tokenNo and newItems props
+import ReceiptTemplate from "./ReceiptTemplate";
 import axios from "../../api/axios";
 
 // Constants
@@ -84,7 +84,7 @@ const EnhancedPOSSystemWithReceipt = () => {
     eDate: "",
     time: "",
     holdedOrder: "0",
-    selectedSeats: "",
+    selectedSeats: [],
   });
   const [restaurantSettings, setRestaurantSettings] = useState({
     name: localStorage.getItem("restaurantName") || "Restaurant",
@@ -93,12 +93,15 @@ const EnhancedPOSSystemWithReceipt = () => {
     address: localStorage.getItem("restaurantAddress") || "",
   });
   const [cart, setCart] = useState([]);
-  const [newItems, setNewItems] = useState([]); // New state for tracking newly added items
+  const [newItems, setNewItems] = useState([]);
   const [currentQty, setCurrentQty] = useState("1");
   const [selectedCartItemId, setSelectedCartItemId] = useState(null);
   const [currentItem, setCurrentItem] = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
   const [showTableModal, setShowTableModal] = useState(false);
+  const [showSeatModal, setShowSeatModal] = useState(false);
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [selectedSeats, setSelectedSeats] = useState(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showKOTModal, setShowKOTModal] = useState(false);
@@ -337,7 +340,6 @@ const EnhancedPOSSystemWithReceipt = () => {
         return [...prev, newCartItem];
       });
 
-      // Add to newItems only if this is a new addition
       setNewItems((prev) => {
         const existingNewItem = prev.find(
           (newItem) => newItem.itemId === item.ItemId
@@ -383,7 +385,6 @@ const EnhancedPOSSystemWithReceipt = () => {
       )
     );
 
-    // Update newItems if the item exists in newItems
     setNewItems((prev) =>
       prev.map((item) =>
         item.itemId === itemId
@@ -465,7 +466,7 @@ const EnhancedPOSSystemWithReceipt = () => {
       eDate: formatDate(new Date()),
       time: formatTime(new Date()),
       holdedOrder: "0",
-      selectedSeats: "",
+      selectedSeats: [],
     });
     clearCart();
     setCurrentQty("1");
@@ -479,15 +480,51 @@ const EnhancedPOSSystemWithReceipt = () => {
     clearCart,
   ]);
 
-  const selectTable = useCallback((table) => {
-    setFormData((prev) => ({
-      ...prev,
-      tableId: table.tableId,
-      tableNo: table.Code,
-      selectedSeats: table.Capacity,
-    }));
-    setShowTableModal(false);
-  }, []);
+  const handleTableSelect = useCallback(
+    (table) => {
+      if (table.Status === "OCCUPIED" && formData.holdedOrder === "0") {
+        setError(
+          "This table is occupied. Please select a KOT order or another table."
+        );
+        return;
+      }
+      setSelectedTable(table);
+      setShowTableModal(false);
+      setShowSeatModal(true);
+    },
+    [formData.holdedOrder]
+  );
+
+  const handleSeatSelect = useCallback(
+    (seat) => {
+      if (seat.Status === 1 && formData.holdedOrder === "0") {
+        setError(
+          "This seat is already occupied. Please select a KOT order or another seat."
+        );
+        return;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        tableId: selectedTable.TableId,
+        tableNo: selectedTable.Code,
+        selectedSeats: prev.selectedSeats.includes(seat.SeatId)
+          ? prev.selectedSeats.filter((id) => id !== seat.SeatId)
+          : [...prev.selectedSeats, seat.SeatId],
+      }));
+      const data = selectedSeats;
+      console.log(data);
+    },
+    [selectedTable, formData.holdedOrder]
+  );
+
+  const confirmSeatSelection = useCallback(() => {
+    if (formData.selectedSeats.length === 0) {
+      setError("Please select at least one seat.");
+      return;
+    }
+    console.log(formData.selectedSeats[0]);
+    setShowSeatModal(false);
+  }, [formData.selectedSeats]);
 
   const selectCustomer = useCallback((customer) => {
     const address = customer.Add1 || customer.Add2 || customer.Add3 || "";
@@ -515,7 +552,10 @@ const EnhancedPOSSystemWithReceipt = () => {
         delBoy: String(order.DelBoy || "0"),
         tableId: String(order.tableInfo?.TableId || "0"),
         tableNo: order.tableInfo?.TableCode || order.TableNo || "",
-        selectedSeats: String(order.tableInfo?.Capacity || ""),
+        selectedSeats:
+          order.tableInfo?.seats
+            ?.filter((seat) => seat.Status === 1)
+            .map((seat) => seat.SeatId) || [],
         remarks: order.OrderRemarks || "",
         total: order.Total || 0,
         status:
@@ -526,7 +566,6 @@ const EnhancedPOSSystemWithReceipt = () => {
         holdedOrder: String(order.OrderNo),
       });
 
-      // Set cart with existing order items
       const existingItems = order.orderDetails.map((item, index) => ({
         itemId: item.ItemCode || `temp-${index}`,
         slNo: item.SlNo,
@@ -543,8 +582,7 @@ const EnhancedPOSSystemWithReceipt = () => {
         notes: item.OrderDetailNotes || "",
       }));
       setCart(existingItems);
-      setNewItems([]); // Reset newItems to track only new additions
-
+      setNewItems([]);
       setCurrentQty("1");
       setCurrentItem(null);
       setSelectedCartItemId(null);
@@ -586,6 +624,10 @@ const EnhancedPOSSystemWithReceipt = () => {
       setError("Cart is empty. Add items to save the order.");
       return;
     }
+    if (formData.status === "Dine-In" && formData.selectedSeats.length === 0) {
+      setError("Please select at least one seat for Dine-In orders.");
+      return;
+    }
 
     const orderData = {
       orderNo: formData.orderNo,
@@ -601,6 +643,7 @@ const EnhancedPOSSystemWithReceipt = () => {
       deliveryBoyId: formData.delBoy || "0",
       tableId: formData.tableId || "0",
       tableNo: formData.tableNo || "",
+      selectedSeats: formData.selectedSeats,
       remarks: formData.remarks || "",
       total: parseFloat(getFinalTotal),
       prefix: formData.prefix,
@@ -627,7 +670,6 @@ const EnhancedPOSSystemWithReceipt = () => {
       await axios.post("/orders", orderData);
       setShowReceiptModal(true);
 
-      // Calculate totals for newItems only for the receipt
       const newItemsTotal = newItems
         .reduce((sum, item) => sum + item.amount, 0)
         .toFixed(2);
@@ -652,16 +694,19 @@ const EnhancedPOSSystemWithReceipt = () => {
           .catch(() => ({ data: { data: [] } })),
         axios.get("/pending").catch(() => ({ data: { data: [] } })),
         axios.get("/token-counts").catch(() => ({ data: { data: {} } })),
+        axios.get("/tables-seats").catch(() => ({ data: { data: [] } })),
       ]);
 
       setFormData((prev) => ({
         ...prev,
         orderNo: String(parseInt(orderResponse.data.data.orderNo || "0") + 1),
         holdedOrder: "0",
+        selectedSeats: [],
       }));
       setCustomers(customersResponse.data.data);
       setPendingOrders(pendingOrdersResponse.data.data);
       setTokenCounts(tokenCountsResponse.data.data);
+      setTables(tablesResponse.data.data);
 
       setTimeout(() => {
         clearAllFields();
@@ -699,6 +744,7 @@ const EnhancedPOSSystemWithReceipt = () => {
     (query) => setCustomerSearchQuery(query),
     []
   );
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 flex justify-between items-center shadow-lg">
@@ -993,12 +1039,21 @@ const EnhancedPOSSystemWithReceipt = () => {
                       className="block text-xs font-medium text-gray-600 mb-1"
                       htmlFor="selectedSeats"
                     >
-                      Seats
+                      Selected Seats
                     </label>
                     <input
                       id="selectedSeats"
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          selectedSeats: Array.from(
+                            e.target.selectedOptions,
+                            (option) => option.value
+                          ),
+                        }))
+                      }
                       className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50"
-                      value={formData.selectedSeats || "--"}
+                      value={formData.selectedSeats}
                       readOnly
                       placeholder="--"
                       aria-readonly="true"
@@ -1619,14 +1674,16 @@ const EnhancedPOSSystemWithReceipt = () => {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-96 overflow-y-auto">
             {tables.map((table) => (
               <button
-                key={table.Id}
+                key={table.TableId}
                 className={`p-4 rounded-lg border-2 flex flex-col items-center justify-center hover:bg-blue-50 transition-colors ${
                   table.Status === "OCCUPIED"
                     ? "border-red-300 bg-red-50"
                     : "border-green-300 bg-green-50 hover:border-green-400"
                 }`}
-                onClick={() => selectTable(table)}
-                disabled={table.Status === "OCCUPIED"}
+                onClick={() => handleTableSelect(table)}
+                disabled={
+                  table.Status === "OCCUPIED" && formData.holdedOrder === "0"
+                }
                 aria-label={`Select table ${table.Code}`}
               >
                 <div className="text-2xl font-bold mb-1">T{table.Code}</div>
@@ -1638,6 +1695,48 @@ const EnhancedPOSSystemWithReceipt = () => {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={showSeatModal}
+        onClose={() => setShowSeatModal(false)}
+        title={`Select Seats for Table ${selectedTable?.Code}`}
+      >
+        {modalLoading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 max-h-96 overflow-y-auto">
+            {selectedTable?.seats?.map((seat) => (
+              <button
+                key={seat.SeatId}
+                className={`p-4 rounded-lg border-2 flex flex-col items-center justify-center hover:bg-blue-50 transition-colors ${
+                  seat.Status === 1
+                    ? "border-red-300 bg-red-50"
+                    : formData.selectedSeats.includes(seat.SeatId)
+                    ? "border-blue-300 bg-blue-100"
+                    : "border-green-300 bg-green-50 hover:border-green-400"
+                }`}
+                onClick={() => handleSeatSelect(seat)}
+                disabled={seat.Status === 1 && formData.holdedOrder === "0"}
+                aria-label={`Select seat ${seat.SeatName}`}
+              >
+                <div className="text-xl font-bold mb-1">{seat.SeatName}</div>
+                <div className="text-xs uppercase font-medium">
+                  {seat.Status === 1 ? "Occupied" : "Available"}
+                </div>
+              </button>
+            ))}
+            <div className="col-span-full mt-4">
+              <button
+                className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+                onClick={confirmSeatSelection}
+                aria-label="Confirm seat selection"
+              >
+                Confirm Selection
+              </button>
+            </div>
           </div>
         )}
       </Modal>
@@ -1807,7 +1906,6 @@ const EnhancedPOSSystemWithReceipt = () => {
           </button>
         </div>
       </Modal>
-
       <Modal
         isOpen={showReceiptModal}
         onClose={() => setShowReceiptModal(false)}
@@ -1820,17 +1918,27 @@ const EnhancedPOSSystemWithReceipt = () => {
               date: formData.eDate,
               time: formData.time,
               status: formData.status,
+              custId: formData.custId,
               custName: formData.custName,
               contact: formData.contact,
+              flat: formData.flat,
+              address: formData.address,
+              tableNo: formData.tableNo,
               delBoy:
                 employees.find(
                   (emp) => emp.Code?.toString() === formData.delBoy.toString()
                 )?.EmpName || "--",
-              flat: formData.flat,
-              address: formData.address,
+              selectedSeats: formData?.selectedSeats
+                .map(
+                  (seatId) =>
+                    tables
+                      .find((t) => t.TableId === formData.tableId)
+                      ?.seats.find((s) => s.SeatId === seatId)?.SeatName
+                )
+                .filter(Boolean)
+                .join(", "),
               remarks: formData.remarks,
-              tableNo: formData.tableNo,
-              total: parseFloat(getFinalTotal),
+              prefix: formData.prefix,
               tokenNo: tokenCounts[formData.status]?.nextToken || 1,
             }}
             items={cart}
@@ -1848,15 +1956,15 @@ const EnhancedPOSSystemWithReceipt = () => {
         {modalLoading ? (
           <div className="text-center py-4">Loading...</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
             {pendingOrders.map((order) => (
               <button
                 key={order.OrderNo}
                 className="p-4 rounded-lg border-2 flex flex-col items-start justify-center hover:bg-blue-50 transition-colors border-blue-200"
                 onClick={() => selectPendingOrder(order)}
-                aria-label={`Select order ${order.OrderNo}`}
+                aria-label={`Select KOT order ${order.OrderNo}`}
               >
-                <div className="text-xl font-bold text-blue-800 mb-1">
+                <div className="text-lg font-bold text-blue-800 mb-1">
                   T{order.TableNo}
                 </div>
                 <div className="text-sm text-gray-600">
@@ -1869,55 +1977,13 @@ const EnhancedPOSSystemWithReceipt = () => {
               </button>
             ))}
             {pendingOrders.length === 0 && !loading && (
-              <div className="col-span-4 text-center py-4 text-gray-500">
-                No pending orders found.
+              <div className="col-span-3 text-center py-4 text-gray-500">
+                No pending KOT orders found.
               </div>
             )}
           </div>
         )}
       </Modal>
-
-      {error && (
-        <div className="fixed bottom-4 right-4 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 mr-2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div className="flex-1">{error}</div>
-          <button
-            className="ml-4 text-white hover:text-gray-200"
-            onClick={() => setError(null)}
-            aria-label="Dismiss error"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
     </div>
   );
 };

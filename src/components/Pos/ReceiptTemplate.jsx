@@ -2,6 +2,7 @@ import React, { useRef, memo, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
 const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
+  console.log(order)
   const printRef = useRef();
   const [hasPrintAttempted, setHasPrintAttempted] = useState(false);
   const printTimeoutRef = useRef(null);
@@ -144,7 +145,7 @@ const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
             }
             ${
               order?.status === "Dine-In"
-                ? `<div class="info">Table No: ${order?.tableNo || "N/A"}</div>`
+                ? `<div class="info">Table No: ${order?.tableNo || "N/A"} - ${order?.selectedSeats || "N/A"}</div>`
                 : ""
             }
             <div class="divider"></div>
@@ -240,7 +241,7 @@ const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
           <div className="info">Staff: {order?.delBoy || "N/A"}</div>
         )}
         {orderStatus === "Dine-In" && (
-          <div className="info">Table No: {order?.tableNo || "N/A"}</div>
+          <div className="info">Table No: {order?.tableNo || "N/A"} - {order?.selectedSeats || "N/A"} </div>
         )}
 
         <div className="divider"></div>
