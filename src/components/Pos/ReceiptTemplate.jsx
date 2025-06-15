@@ -1,8 +1,8 @@
 import React, { useRef, memo, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
-const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
-  console.log(order)
+const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) => {
+  console.log("Rendering ReceiptTemplate with order:", updatedItems, newItems, items, restaurant);
   const printRef = useRef();
   const [hasPrintAttempted, setHasPrintAttempted] = useState(false);
   const printTimeoutRef = useRef(null);
@@ -28,27 +28,39 @@ const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
     
     const content = printRef.current;
 
-    // Direct printing to connected device without preview
+    // Combine newItems and updatedItems for printing
+    let itemIndex = 0;
+    const itemRows = [
+      ...newItems.map(item => {
+        itemIndex++;
+        return `
+          <div class="item-row">
+            <div class="item-sl">${itemIndex}</div>
+            <div class="item-code">${item.itemCode || "N/A"}</div>
+            <div class="item-name">${item.itemName || "Unknown Item"}</div>
+            <div class="item-qty">${item.qty || 1}</div>
+          </div>
+        `;
+      }),
+      ...updatedItems.map(item => {
+        itemIndex++;
+        return `
+          <div class="item-row">
+            <div class="item-sl">${itemIndex}</div>
+            <div class="item-code">${item.itemCode || "N/A"}</div>
+            <div class="item-name">${item.itemName || "Unknown Item"} (${item.originalQty || item.qty} → ${item.qty})</div>
+            <div class="item-qty">${item.qty || 1}</div>
+          </div>
+        `;
+      })
+    ].join("");
+
     const printContent = document.createElement("iframe");
     printContent.style.position = "absolute";
     printContent.style.top = "-9999px";
     printContent.style.left = "-9999px";
     printContent.style.width = "80mm";
     document.body.appendChild(printContent);
-
-    // Use newItems for printing
-    const itemRows = newItems
-      .map(
-        (item, index) => `
-        <div class="item-row">
-          <div class="item-sl">${index + 1}</div>
-          <div class="item-code">${item.itemCode || "N/A"}</div>
-          <div class="item-name">${item.itemName || "Unknown Item"}</div>
-          <div class="item-qty">${item.qty || 1}</div>
-        </div>
-      `
-      )
-      .join("");
 
     printContent.contentDocument.write(`
       <!DOCTYPE html>
@@ -255,23 +267,28 @@ const ReceiptTemplate = ({ order, items, newItems, restaurant }) => {
 
         <div className="divider"></div>
 
-        {newItems && newItems.length > 0
-          ? newItems.map((item, index) => (
-              <div key={`item-${index}`} className="item-row">
-                <div className="item-sl">{index + 1}</div>
-                <div className="item-code">{item.itemCode || "N/A"}</div>
-                <div className="item-name">{item.itemName || "Unknown Item"}</div>
-                <div className="item-qty">{item.qty || 1}</div>
+        {[...newItems, ...updatedItems].length > 0 ? (
+          [...newItems, ...updatedItems].map((item, index) => (
+            <div key={`item-${index}`} className="item-row">
+              <div className="item-sl">{index + 1}</div>
+              <div className="item-code">{item.itemCode || "N/A"}</div>
+              <div className="item-name">
+                {item.itemName || "Unknown Item"}
+                {item.originalQty && item.originalQty !== item.qty ? ` (${item.originalQty} → ${item.qty})` : ""}
               </div>
-            ))
-          : items.map((item, index) => ( // Fallback to items if newItems is empty
-              <div key={`item-${index}`} className="item-row">
-                <div className="item-sl">{index + 1}</div>
-                <div className="item-code">{item.itemCode || "N/A"}</div>
-                <div className="item-name">{item.itemName || "Unknown Item"}</div>
-                <div className="item-qty">{item.qty || 1}</div>
-              </div>
-            ))}
+              <div className="item-qty">{item.qty || 1}</div>
+            </div>
+          ))
+        ) : (
+          items.map((item, index) => (
+            <div key={`item-${index}`} className="item-row">
+              <div className="item-sl">{index + 1}</div>
+              <div className="item-code">{item.itemCode || "N/A"}</div>
+              <div className="item-name">{item.itemName || "Unknown Item"}</div>
+              <div className="item-qty">{item.qty || 1}</div>
+            </div>
+          ))
+        )}
 
         <div className="divider"></div>
 
@@ -310,6 +327,16 @@ ReceiptTemplate.propTypes = {
       itemCode: PropTypes.string,
       itemName: PropTypes.string,
       qty: PropTypes.number,
+    })
+  ).isRequired,
+  updatedItems: PropTypes.arrayOf(
+    PropTypes.shape({
+      itemId: PropTypes.string,
+      slNo: PropTypes.number,
+      itemCode: PropTypes.string,
+      itemName: PropTypes.string,
+      qty: PropTypes.number,
+      originalQty: PropTypes.number,
     })
   ).isRequired,
   restaurant: PropTypes.shape({
