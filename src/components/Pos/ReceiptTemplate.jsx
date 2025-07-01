@@ -23,12 +23,11 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
   }, []); // Empty dependency array - only runs once on mount
 
   const printDirectToConnectedDevice = () => {
-    // Prevent multiple print attempts
     if (hasPrintAttempted) return;
     
     const content = printRef.current;
 
-    // Combine newItems and updatedItems for printing
+    // Use only newItems and updatedItems for the current order
     let itemIndex = 0;
     const itemRows = [
       ...newItems.map(item => {
@@ -124,42 +123,15 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
         <body>
           <div class="receipt">
             <div class="header">
-              <div class="business-name">${
-                (restaurant?.name || "Restaurant").toUpperCase()
-              }</div>
-              <div class="info">${
-                restaurant?.address || ""
-              }</div>
+              <div class="business-name">${(restaurant?.name || "Restaurant").toUpperCase()}</div>
+              <div class="info">${restaurant?.address || ""}</div>
             </div>
-            <div class="title">${
-              order?.status
-                ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) + " Order"
-                : "KOT Order"
-            }</div>
-            <div class="info -ml-1">Date: ${
-              order?.date ||
-              new Date().toLocaleDateString("en-US", {
-                month: "numeric",
-                day: "numeric",
-                year: "numeric",
-              })
-            }</div>
+            <div class="title">${order?.status ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) + " Order" : "KOT Order"}</div>
+            <div class="info -ml-1">Date: ${order?.date || new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })}</div>
             <div class="info">Time: ${order?.time || "N/A"}</div>
-            <div class="info">Order #${
-              order?.status
-                ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-                : "KOT"
-            } - ${order?.tokenNo || "N/A"}</div>
-            ${
-              (order?.status === "Delivery" || order?.status === "Dine-In")
-                ? `<div class="info">Staff: ${order?.delBoy || "N/A"}</div>`
-                : ""
-            }
-            ${
-              order?.status === "Dine-In"
-                ? `<div class="info">Table No: ${order?.tableNo || "N/A"} - ${order?.selectedSeats || "N/A"}</div>`
-                : ""
-            }
+            <div class="info">Order #${order?.status ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) : "KOT"} - ${order?.tokenNo || "N/A"}</div>
+            ${(order?.status === "Delivery" || order?.status === "Dine-In") ? `<div class="info">Staff: ${order?.delBoy || "N/A"}</div>` : ""}
+            ${order?.status === "Dine-In" ? `<div class="info">Table No: ${order?.tableNo || "N/A"} - ${order?.selectedSeats || "N/A"}</div>` : ""}
             <div class="divider"></div>
             <div class="item-row" style="font-weight: bold;">
               <div class="item-sl">Sl</div>
@@ -168,13 +140,9 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
               <div class="item-qty">Qty</div>
             </div>
             <div class="divider"></div>
-            ${itemRows}
+            ${itemRows || "<div class='item-row'>No items to print</div>"}
             <div class="divider"></div>
-            ${
-              order?.remarks
-                ? `<div class="remarks">Special Instructions: ${order.remarks}</div>`
-                : ""
-            }
+            ${order?.remarks ? `<div class="remarks">Special Instructions: ${order.remarks}</div>` : ""}
           </div>
         </body>
       </html>
@@ -182,7 +150,6 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
 
     printContent.contentDocument.close();
 
-    // Start printing process with better control
     printTimeoutRef.current = setTimeout(() => {
       try {
         printContent.contentWindow.focus();
@@ -191,7 +158,6 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
         console.log("Print dialog was cancelled or failed");
       }
 
-      // Remove the iframe after printing attempt
       setTimeout(() => {
         try {
           if (document.body.contains(printContent)) {
@@ -201,32 +167,18 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
           console.log("Error removing print iframe");
         }
       }, 1000);
-    }, 100); // Reduced timeout for faster response
+    }, 100);
   };
 
-  const currentDate =
-    order?.date ||
-    new Date().toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-  // Ensure restaurant data is properly handled
-  const restaurantName =
-    restaurant?.name || "Restaurant";
-  const restaurantAddress =
-    restaurant?.address || "";
-
-  // Capitalize order status for display
+  const currentDate = order?.date || new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
+  const restaurantName = restaurant?.name || "Restaurant";
+  const restaurantAddress = restaurant?.address || "";
   const orderStatus = order?.status || "Dine-In";
-  const formattedStatus = orderStatus
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const formattedStatus = orderStatus.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
   const orderTitle = `${formattedStatus} Order`;
 
   return (
-    <div className="hidden"> {/* Hide the component from view */}
+    <div className="hidden">
       <div
         ref={printRef}
         className="receipt bg-white p-4 border border-gray-200 rounded-lg"
@@ -246,23 +198,21 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
 
         <div className="info -ml-1">Date: {currentDate}</div>
         <div className="info">Time: {order?.time || "N/A"}</div>
-        <div className="info">
-          Order #{formattedStatus} - {order?.tokenNo || "N/A"}
-        </div>
+        <div className="info">Order #{formattedStatus} - {order?.tokenNo || "N/A"}</div>
         {(orderStatus === "Delivery" || orderStatus === "Dine-In") && (
           <div className="info">Staff: {order?.delBoy || "N/A"}</div>
         )}
         {orderStatus === "Dine-In" && (
-          <div className="info">Table No: {order?.tableNo || "N/A"} - {order?.selectedSeats || "N/A"} </div>
+          <div className="info">Table No: {order?.tableNo || "N/A"} - {order?.selectedSeats || "N/A"}</div>
         )}
 
         <div className="divider"></div>
 
         <div className="item-row" style={{ fontWeight: "bold" }}>
-          <div className="item-sl">Sl</div>
-          <div className="item-code">Code</div>
-          <div className="item-name">Item</div>
-          <div className="item-qty">Qty</div>
+          <div class="item-sl">Sl</div>
+          <div class="item-code">Code</div>
+          <div class="item-name">Item</div>
+          <div class="item-qty">Qty</div>
         </div>
 
         <div className="divider"></div>
@@ -280,14 +230,7 @@ const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) =
             </div>
           ))
         ) : (
-          items.map((item, index) => (
-            <div key={`item-${index}`} className="item-row">
-              <div className="item-sl">{index + 1}</div>
-              <div className="item-code">{item.itemCode || "N/A"}</div>
-              <div className="item-name">{item.itemName || "Unknown Item"}</div>
-              <div className="item-qty">{item.qty || 1}</div>
-            </div>
-          ))
+          <div className="item-row">No items to print</div>
         )}
 
         <div className="divider"></div>
