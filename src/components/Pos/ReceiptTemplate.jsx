@@ -1,251 +1,206 @@
-import React, { useRef, memo, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import PropTypes from "prop-types";
 
-const ReceiptTemplate = ({ order, items, newItems, updatedItems, restaurant }) => {
-  console.log("Rendering ReceiptTemplate with order:", updatedItems, newItems, items, restaurant);
-  const printRef = useRef();
-  const [hasPrintAttempted, setHasPrintAttempted] = useState(false);
-  const printTimeoutRef = useRef(null);
-
-  // Auto-print when component mounts, but only once
-  useEffect(() => {
-    if (!hasPrintAttempted) {
-      setHasPrintAttempted(true);
-      printDirectToConnectedDevice();
+// Helper function to split text into lines of given width
+const wrapText = (text, maxLen) => {
+  const lines = [];
+  let current = "";
+  text.split(" ").forEach((word) => {
+    if ((current + word).length > maxLen) {
+      lines.push(current.trim());
+      current = word + " ";
+    } else {
+      current += word + " ";
     }
-    
-    // Cleanup function to clear timeout on unmount
-    return () => {
-      if (printTimeoutRef.current) {
-        clearTimeout(printTimeoutRef.current);
-      }
-    };
-  }, []); // Empty dependency array - only runs once on mount
+  });
+  if (current.trim()) lines.push(current.trim());
+  return lines;
+};
 
-  const printDirectToConnectedDevice = () => {
-    if (hasPrintAttempted) return;
-    
-    const content = printRef.current;
+const openPrintableReceipt = ({
+  order,
+  newItems,
+  updatedItems,
+  restaurant,
+}) => {
+  const allItems = [...newItems, ...updatedItems];
+  // Aggregate quantities for duplicate items based on itemCode
+  const aggregatedItems = allItems.reduce((acc, item) => {
+    const existingItem = acc.find((i) => i.itemCode === item.itemCode);
+    if (existingItem) {
+      existingItem.qty += item.qty || 1;
+      existingItem.amount = existingItem.qty * existingItem.rate; // Recalculate amount if rate exists
+    } else {
+      acc.push({
+        ...item,
+        qty: item.qty || 1,
+        amount: (item.qty || 1) * (item.rate || 0),
+      });
+    }
+    return acc;
+  }, []);
 
-    // Use only newItems and updatedItems for the current order
-    let itemIndex = 0;
-    const itemRows = [
-      ...newItems.map(item => {
-        itemIndex++;
-        return `
-          <div class="item-row">
-            <div class="item-sl">${itemIndex}</div>
-            <div class="item-code">${item.itemCode || "N/A"}</div>
-            <div class="item-name">${item.itemName || "Unknown Item"}</div>
-            <div class="item-qty">${item.qty || 1}</div>
-          </div>
-        `;
-      }),
-      ...updatedItems.map(item => {
-        itemIndex++;
-        return `
-          <div class="item-row">
-            <div class="item-sl">${itemIndex}</div>
-            <div class="item-code">${item.itemCode || "N/A"}</div>
-            <div class="item-name">${item.itemName || "Unknown Item"} (${item.originalQty || item.qty} → ${item.qty})</div>
-            <div class="item-qty">${item.qty || 1}</div>
-          </div>
-        `;
-      })
-    ].join("");
+  const date = order?.date || new Date().toLocaleDateString();
+  const time = order?.time || new Date().toLocaleTimeString();
+  // Fetch delBoy from order.delBoy or fall back to localStorage userName
+  const delBoy =
+    order?.delBoy === "N/A" ? localStorage.getItem("userName") : order?.delBoy;
 
-    const printContent = document.createElement("iframe");
-    printContent.style.position = "absolute";
-    printContent.style.top = "-9999px";
-    printContent.style.left = "-9999px";
-    printContent.style.width = "80mm";
-    document.body.appendChild(printContent);
-
-    printContent.contentDocument.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Print KOT Receipt</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            @page {
-              size: 80mm auto !important;
-              margin: 0mm !important;
-            }
-            html, body {
-              font-family: 'Courier New', monospace;
-              margin: 0 !important;
-              padding: 0 !important;
-              width: 80mm !important;
-              max-width: 80mm !important;
-              font-size: 12px;
-              color: #000;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            * {
-              box-sizing: border-box;
-            }
-            .receipt { 
-              padding: 5px; 
-              width: 80mm !important;
-              max-width: 80mm !important;
-            }
-            .header { text-align: center; margin-bottom: 10px; }
-            .business-name { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
-            .info { margin-bottom: 5px; font-size: 11px; }
-            .title { font-weight: bold; text-align: center; margin: 5px 0; font-size: 13px; }
-            .divider { border-bottom: 1px dashed #000; margin: 5px 0; }
-            .item-row { display: flex; justify-content: flex-start; margin: 3px 0; font-size: 14px; }
-            .item-sl { flex: 0 0 25px; text-align: left; padding-left: 5px; }
-            .item-code { flex: 0 0 80px; padding-left: 0; }
-            .item-name { flex: 2; padding-left: 0; }
-            .item-qty { flex: 0 0 30px; text-align: center; }
-            .remarks { margin-top: 15px; text-align: left; font-size: 12px; font-weight: bold; }
-            @media print {
-              @page {
-                size: 80mm auto !important;
-                margin: 0mm !important;
-              }
-              html, body {
-                width: 80mm !important;
-                max-width: 80mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-              }
-              .receipt {
-                width: 80mm !important;
-                max-width: 80mm !important;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-            <div class="header">
-              <div class="business-name">${(restaurant?.name || "Restaurant").toUpperCase()}</div>
-              <div class="info">${restaurant?.address || ""}</div>
-            </div>
-            <div class="title">${order?.status ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) + " Order" : "KOT Order"}</div>
-            <div class="info -ml-1">Date: ${order?.date || new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })}</div>
-            <div class="info">Time: ${order?.time || "N/A"}</div>
-            <div class="info">Order #${order?.status ? order.status.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) : "KOT"} - ${order?.tokenNo || "N/A"}</div>
-            ${(order?.status === "Delivery" || order?.status === "Dine-In") ? `<div class="info">Staff: ${order?.delBoy || "N/A"}</div>` : ""}
-            ${order?.status === "Dine-In" ? `<div class="info">Table No: ${order?.tableNo || "N/A"} - ${order?.selectedSeats || "N/A"}</div>` : ""}
-            <div class="divider"></div>
-            <div class="item-row" style="font-weight: bold;">
-              <div class="item-sl">Sl</div>
-              <div class="item-code">Code</div>
-              <div class="item-name">Item</div>
-              <div class="item-qty">Qty</div>
-            </div>
-            <div class="divider"></div>
-            ${itemRows || "<div class='item-row'>No items to print</div>"}
-            <div class="divider"></div>
-            ${order?.remarks ? `<div class="remarks">Special Instructions: ${order.remarks}</div>` : ""}
-          </div>
-        </body>
-      </html>
-    `);
-
-    printContent.contentDocument.close();
-
-    printTimeoutRef.current = setTimeout(() => {
-      try {
-        printContent.contentWindow.focus();
-        printContent.contentWindow.print();
-      } catch (error) {
-        console.log("Print dialog was cancelled or failed");
-      }
-
-      setTimeout(() => {
-        try {
-          if (document.body.contains(printContent)) {
-            document.body.removeChild(printContent);
-          }
-        } catch (error) {
-          console.log("Error removing print iframe");
-        }
-      }, 1000);
-    }, 100);
+  // Define column widths in characters (80mm thermal font)
+  const COL_WIDTH = {
+    item: 18, // ~18 characters
+    qty: 5, // ~5 characters
   };
 
-  const currentDate = order?.date || new Date().toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
-  const restaurantName = restaurant?.name || "Restaurant";
-  const restaurantAddress = restaurant?.address || "";
-  const orderStatus = order?.status || "Dine-In";
-  const formattedStatus = orderStatus.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
-  const orderTitle = `${formattedStatus} Order`;
+  const renderItemRows = () => {
+    return aggregatedItems
+      .map((item, index) => {
+        const itemLines = wrapText(item.itemName || "Unnamed", COL_WIDTH.item);
+        const qtyText = `${item.qty || 1}`; // Show total aggregated qty
+        const qtyLines = wrapText(qtyText, COL_WIDTH.qty);
 
-  return (
-    <div className="hidden">
-      <div
-        ref={printRef}
-        className="receipt bg-white p-4 border border-gray-200 rounded-lg"
-        style={{
-          fontFamily: "Courier New, monospace",
-          fontSize: "12px",
-          width: "80mm",
-          margin: "0 auto",
-        }}
-      >
-        <div className="header">
-          <div className="business-name">{restaurantName.toUpperCase()}</div>
-          <div className="info">{restaurantAddress}</div>
-        </div>
+        const maxLines = Math.max(itemLines.length, qtyLines.length);
 
-        <div className="title">{orderTitle}</div>
+        let rowHtml = "";
+        for (let i = 0; i < maxLines; i++) {
+          rowHtml += `
+          <div class="item-row">
+            <div class="item-slno"><strong>${
+              item.slNo || index + 1
+            }</strong></div>
+            <div class="item-name"><strong>${itemLines[i] || ""}</strong></div>
+            <div class="item-qty"><strong>${qtyLines[i] || ""}</strong></div>
+          </div>
+        `;
+        }
+        return rowHtml;
+      })
+      .join("");
+  };
 
-        <div className="info -ml-1">Date: {currentDate}</div>
-        <div className="info">Time: {order?.time || "N/A"}</div>
-        <div className="info">Order #{formattedStatus} - {order?.tokenNo || "N/A"}</div>
-        {(orderStatus === "Delivery" || orderStatus === "Dine-In") && (
-          <div className="info">Staff: {order?.delBoy || "N/A"}</div>
-        )}
-        {orderStatus === "Dine-In" && (
-          <div className="info">Table No: {order?.tableNo || "N/A"} - {order?.selectedSeats || "N/A"}</div>
-        )}
+  const receiptHtml = `
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <title>KOT Receipt</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          font-family: 'Courier New', monospace;
+          font-size: 14px;
+          font-weight: bold;
+          max-width: 80mm;
+          margin: 0;
+          padding: 10px;
+          color: #000;
+          background: #fff;
+        }
+        .center { text-align: center; }
+        .divider { border-top: 1px dashed #000; margin: 6px 0; }
+        .info { text-align: center; margin: 2px 0; }
+        .header-row, .item-row {
+          display: flex;
+          font-size: 14px;
+          font-weight: bold;
+          line-height: 1.3;
+        }
+        .item-slno {
+          width: 20%;
+          word-break: break-word;
+        }
+        .item-name {
+          width: 60%;
+          word-break: break-word;
+        }
+        .item-qty {
+          width: 20%;
+          text-align: right;
+        }
+        .remarks {
+          font-size: 14px;
+          font-weight: bold;
+          margin-top: 10px;
+        }
+        .print-button {
+          display: block;
+          margin: 10px auto;
+          padding: 6px 12px;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        @media print {
+          .print-button { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="center">${(
+        restaurant?.name || "Restaurant"
+      ).toUpperCase()}</div>
+      <div class="info">${restaurant?.address || ""}</div>
+      <div class="info">${date} | ${time}</div>
+      <div class="info">Order: ${order?.status || "KOT"} - ${
+    order?.tokenNo || "N/A"
+  }</div>
 
-        <div className="divider"></div>
+      ${
+        order?.status === "Dine-In"
+          ? `<div class="info">Table: ${order?.tableNo || "N/A"} | Seats: ${
+              order?.selectedSeats || "N/A"
+            }</div>`
+          : ""
+      }
+      ${
+        order?.status === "Delivery" || order?.status === "Takeaway"
+          ? `<div class="info">Customer: ${order?.custName || "N/A"}<br>${
+              order?.flat || ""
+            } ${order?.contact || ""}</div>`
+          : ""
+      }
+      ${delBoy ? `<div class="info">Staff: ${delBoy}</div>` : ""}
 
-        <div className="item-row" style={{ fontWeight: "bold" }}>
-          <div class="item-sl">Sl</div>
-          <div class="item-code">Code</div>
-          <div class="item-name">Item</div>
-          <div class="item-qty">Qty</div>
-        </div>
-
-        <div className="divider"></div>
-
-        {[...newItems, ...updatedItems].length > 0 ? (
-          [...newItems, ...updatedItems].map((item, index) => (
-            <div key={`item-${index}`} className="item-row">
-              <div className="item-sl">{index + 1}</div>
-              <div className="item-code">{item.itemCode || "N/A"}</div>
-              <div className="item-name">
-                {item.itemName || "Unknown Item"}
-                {item.originalQty && item.originalQty !== item.qty ? ` (${item.originalQty} → ${item.qty})` : ""}
-              </div>
-              <div className="item-qty">{item.qty || 1}</div>
-            </div>
-          ))
-        ) : (
-          <div className="item-row">No items to print</div>
-        )}
-
-        <div className="divider"></div>
-
-        {order?.remarks && (
-          <div className="remarks">Special Instructions: {order.remarks}</div>
-        )}
+      <div class="divider"></div>
+      <div class="header-row">
+        <div class="item-slno">S.No</div>
+        <div class="item-name">Item</div>
+        <div class="item-qty">Qty</div>
       </div>
-    </div>
-  );
+      <div class="divider"></div>
+      ${renderItemRows()}
+      <div class="divider"></div>
+
+      ${
+        order?.remarks
+          ? `<div class="remarks">Remarks: ${order.remarks}</div>`
+          : ""
+      }
+
+      <button class="print-button" onclick="window.print()">Print Receipt</button>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Popup blocked. Please allow pop-ups.");
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(receiptHtml);
+  printWindow.document.close();
+};
+
+const ReceiptTemplate = ({ order, newItems, updatedItems, restaurant }) => {
+  useEffect(() => {
+    openPrintableReceipt({ order, newItems, updatedItems, restaurant });
+  }, []);
+
+  return null;
 };
 
 ReceiptTemplate.propTypes = {
   order: PropTypes.shape({
-    orderNo: PropTypes.string,
     date: PropTypes.string,
     time: PropTypes.string,
     status: PropTypes.string,
@@ -253,29 +208,21 @@ ReceiptTemplate.propTypes = {
     tableNo: PropTypes.string,
     tokenNo: PropTypes.number,
     remarks: PropTypes.string,
+    selectedSeats: PropTypes.string,
+    custName: PropTypes.string,
+    flat: PropTypes.string,
+    contact: PropTypes.string,
   }).isRequired,
-  items: PropTypes.arrayOf(
-    PropTypes.shape({
-      itemId: PropTypes.string,
-      slNo: PropTypes.number,
-      itemCode: PropTypes.string,
-      itemName: PropTypes.string,
-      qty: PropTypes.number,
-    })
-  ).isRequired,
   newItems: PropTypes.arrayOf(
     PropTypes.shape({
-      itemId: PropTypes.string,
-      slNo: PropTypes.number,
       itemCode: PropTypes.string,
       itemName: PropTypes.string,
       qty: PropTypes.number,
+      originalQty: PropTypes.number,
     })
   ).isRequired,
   updatedItems: PropTypes.arrayOf(
     PropTypes.shape({
-      itemId: PropTypes.string,
-      slNo: PropTypes.number,
       itemCode: PropTypes.string,
       itemName: PropTypes.string,
       qty: PropTypes.number,
@@ -288,4 +235,4 @@ ReceiptTemplate.propTypes = {
   }).isRequired,
 };
 
-export default memo(ReceiptTemplate);
+export default ReceiptTemplate;
