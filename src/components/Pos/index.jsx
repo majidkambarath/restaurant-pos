@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useReducer,
-} from "react";
+import React, { useEffect, useState, useCallback, useMemo, useReducer } from "react";
 import { useNavigate } from "react-router-dom";
 import ReceiptTemplate from "./ReceiptTemplate";
 import axios from "../../api/axios";
@@ -39,7 +33,7 @@ const initialState = {
     eDate: "",
     time: "",
     holdedOrder: "0",
-    selectedSeats: [],
+    selectedSeats: [], // Stores SeatId values
   },
   cart: [],
   newItems: [],
@@ -183,6 +177,20 @@ const EnhancedPOSSystemWithReceipt = () => {
   const getFinalTotal = useMemo(
     () => (parseFloat(getTotal) + parseFloat(getTaxAmount)).toFixed(2),
     [getTotal, getTaxAmount]
+  );
+
+  // Calculate Occupied and Available Seats
+  const getSeatCounts = useCallback(
+    (seats) => {
+      const occupiedSeats = seats?.filter((seat) => seat.Status === 1).length || 0;
+      const totalSeats = seats?.length || 0;
+      return {
+        occupiedSeats,
+        availableSeats: totalSeats - occupiedSeats,
+        totalSeats,
+      };
+    },
+    []
   );
 
   // Handlers
@@ -410,6 +418,7 @@ const EnhancedPOSSystemWithReceipt = () => {
       },
     });
     setSelectedCartItemId(null);
+    setSelectedTable(null);
   }, [
     generateRandomCustomerId,
     formatDate,
@@ -419,7 +428,7 @@ const EnhancedPOSSystemWithReceipt = () => {
 
   const handleTableSelect = useCallback(
     (table) => {
-      if (table.Status === "OCCUPIED" && state.formData.holdedOrder === "0") {
+      if (table.TableStatus === 1 && state.formData.holdedOrder === "0") {
         setError(
           "This table is occupied. Please select a KOT order or another table."
         );
@@ -443,13 +452,13 @@ const EnhancedPOSSystemWithReceipt = () => {
       dispatch({
         type: "UPDATE_FORM",
         payload: {
-          tableId: selectedTable.TableID,
-          tableNo: selectedTable.Code,
-          selectedSeats: state.formData.selectedSeats.includes(seat.SeatName)
+          tableId: selectedTable.TableId || selectedTable.TableID,
+          tableNo: selectedTable.TableCode || selectedTable.Code,
+          selectedSeats: state.formData.selectedSeats.includes(seat.SeatId)
             ? state.formData.selectedSeats.filter(
-                (name) => name !== seat.SeatName
+                (id) => id !== seat.SeatId
               )
-            : [...state.formData.selectedSeats, seat.SeatName],
+            : [...state.formData.selectedSeats, seat.SeatId],
         },
       });
     },
@@ -500,10 +509,12 @@ const EnhancedPOSSystemWithReceipt = () => {
         originalQty: item.Qty,
       }));
 
-      const seatNames =
-        order.tableInfo?.seats
-          ?.filter((seat) => seat.Status === 1)
-          .map((seat) => seat.SeatName) || [];
+      const seatIds =
+        order.SeatId && order.SeatId !== null
+          ? [order.SeatId]
+          : order.tableInfo?.seats
+              ?.filter((seat) => seat.Status === 1)
+              .map((seat) => seat.SeatId) || [];
 
       dispatch({
         type: "UPDATE_FORM",
@@ -515,9 +526,9 @@ const EnhancedPOSSystemWithReceipt = () => {
           address: order.Address || "",
           contact: order.Contact || "",
           delBoy: String(order.DelBoy || "0"),
-          tableId: String(order.tableInfo?.TableId || "0"),
-          tableNo: order.tableInfo?.TableCode || order.TableNo || "",
-          selectedSeats: seatNames,
+          tableId: String(order.TableId || "0"),
+          tableNo: order.TableNo || "",
+          selectedSeats: seatIds,
           remarks: order.OrderRemarks || "",
           total: getFinalTotal,
           status:
@@ -533,6 +544,14 @@ const EnhancedPOSSystemWithReceipt = () => {
       dispatch({ type: "SET_NEW_ITEMS", payload: [] });
       dispatch({ type: "SET_UPDATED_ITEMS", payload: [] });
       setSelectedCartItemId(null);
+      setSelectedTable(
+        order.tableInfo || {
+          TableId: order.TableId,
+          TableCode: order.TableNo,
+          TableStatus: 1,
+          seats: order.tableInfo?.seats || [],
+        }
+      );
       setShowKOTModal(false);
     },
     [formatDate, getFinalTotal]
@@ -583,15 +602,28 @@ const EnhancedPOSSystemWithReceipt = () => {
       date: state.formData.eDate,
       time: state.formData.time,
       option: ORDER_TYPE_MAP[state.formData.status],
-      custId: state.formData.status === "Takeaway" ? "0" : state.formData.custId || "0",
-      custName: state.formData.status === "Takeaway" ? "" : state.formData.custName || "",
-      flatNo: state.formData.status === "Takeaway" ? "" : state.formData.flat || "",
-      address: state.formData.status === "Takeaway" ? "" : state.formData.address || "",
-      contact: state.formData.status === "Takeaway" ? "" : state.formData.contact || "",
+      custId:
+        state.formData.status === "Takeaway"
+          ? "0"
+          : state.formData.custId || "0",
+      custName:
+        state.formData.status === "Takeaway"
+          ? ""
+          : state.formData.custName || "",
+      flatNo:
+        state.formData.status === "Takeaway" ? "" : state.formData.flat || "",
+      address:
+        state.formData.status === "Takeaway"
+          ? ""
+          : state.formData.address || "",
+      contact:
+        state.formData.status === "Takeaway"
+          ? ""
+          : state.formData.contact || "",
       deliveryBoyId: state.formData.delBoy || "0",
       tableId: state.formData.tableId || "0",
       tableNo: state.formData.tableNo || "",
-      selectedSeats: state.formData.selectedSeats,
+      selectedSeats: state.formData.selectedSeats, // Contains SeatId values
       remarks: state.formData.remarks || "",
       total: parseFloat(getFinalTotal),
       prefix: state.formData.prefix,
@@ -695,6 +727,16 @@ const EnhancedPOSSystemWithReceipt = () => {
     }
     return customers;
   }, [customerSearchQuery, customers]);
+
+  // Helper function to get SeatNumber from SeatId
+  const getSeatNumberFromId = useCallback(
+    (seatId) => {
+      if (!selectedTable || !selectedTable.seats) return seatId.toString();
+      const seat = selectedTable.seats.find((seat) => seat.SeatId === seatId);
+      return seat ? seat.SeatNumber || seat.SeatName || seatId.toString() : seatId.toString();
+    },
+    [selectedTable]
+  );
 
   // Effects
   useEffect(() => {
@@ -944,7 +986,8 @@ const EnhancedPOSSystemWithReceipt = () => {
               {state.formData.status === "Delivery" && (
                 <div className="flex items-end">
                   <button
-                    className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm hover:bg-blue-700"
+                    className="w-full bg-blue-6
+00 text-white px-4 py-2.5 rounded-lg text-sm hover:bg-blue-700"
                     onClick={() => setShowCustomerModal(true)}
                   >
                     Select Customer
@@ -1042,7 +1085,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                     <div className="flex-1">
                       <input
                         className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50"
-                        value={state.formData.selectedSeats.join(", ")}
+                        value={state.formData.selectedSeats
+                          .map(getSeatNumberFromId)
+                          .join(", ")}
                         readOnly
                         placeholder="Selected Seats"
                       />
@@ -1084,7 +1129,7 @@ const EnhancedPOSSystemWithReceipt = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {state.cart.map((item,i) => (
+                  {state.cart.map((item) => (
                     <tr
                       key={item.itemId}
                       className={`hover:bg-blue-50 ${
@@ -1298,7 +1343,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               {categories.map((category) => (
                 <button
                   key={category.id}
-                  className={`px-3 rounded-lg text-sm ${
+                  className={`px-3 py-2 rounded-lg text-sm ${
                     activeCategory === category.name
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
@@ -1375,6 +1420,14 @@ const EnhancedPOSSystemWithReceipt = () => {
                     <div className="text-sm text-gray-600">
                       Order #{order.OrderNo}
                     </div>
+                    <div className="text-sm text-gray-600">
+                      Seats:{" "}
+                      {order.tableInfo?.seats
+                        ?.filter((seat) => seat.Status === 1)
+                        .map((seat) => seat.SeatNumber)
+                        .join(", ") ||
+                        (order.SeatId ? getSeatNumberFromId(order.SeatId) : "N/A")}
+                    </div>
                     <div className="text-sm font-bold text-blue-700">
                       {order.Total.toFixed(2)} AED
                     </div>
@@ -1397,32 +1450,36 @@ const EnhancedPOSSystemWithReceipt = () => {
         title="Select a Table"
       >
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-80 overflow-y-auto">
-          {tables.map((table) => (
-            <button
-              key={table.TableId}
-              className={`p-4 rounded-lg border-2 ${
-                table.Status === "OCCUPIED"
-                  ? "border-red-300 bg-red-50"
-                  : "border-green-300 bg-green-50 hover:bg-green-100"
-              }`}
-              onClick={() => handleTableSelect(table)}
-              disabled={
-                table.Status === "OCCUPIED" &&
-                state.formData.holdedOrder === "0"
-              }
-            >
-              <div className="text-lg font-bold mb-2">T{table.Code}</div>
-              <div className="text-sm">{table.Status}</div>
-              <div className="text-sm">{table.Capacity} seats</div>
-            </button>
-          ))}
+          {tables.map((table) => {
+            const { occupiedSeats, availableSeats, totalSeats } = getSeatCounts(table.seats);
+            return (
+              <button
+                key={table.TableID}
+                className={`p-4 rounded-lg border-2 ${
+                  table.TableStatus === 1
+                    ? "border-red-300 bg-red-50"
+                    : "border-green-300 bg-green-50 hover:bg-green-100"
+                }`}
+                onClick={() => handleTableSelect(table)}
+                disabled={table.TableStatus === 1 && state.formData.holdedOrder === "0"}
+              >
+                <div className="text-lg font-bold mb-2">T{table.Code}</div>
+                <div className="text-sm">
+                  {table.TableStatus === 1 ? "OCCUPIED" : "AVAILABLE"}
+                </div>
+                <div className="text-sm">
+                  {availableSeats}/{totalSeats} seats available
+                </div>
+              </button>
+            );
+          })}
         </div>
       </Modal>
 
       <Modal
         isOpen={showSeatModal}
         onClose={() => setShowSeatModal(false)}
-        title={`Select Seats for Table ${selectedTable?.Code}`}
+        title={`Select Seats for Table ${selectedTable?.TableCode || selectedTable?.Code}`}
       >
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-80 overflow-y-auto">
           {selectedTable?.seats?.map((seat) => (
@@ -1431,14 +1488,14 @@ const EnhancedPOSSystemWithReceipt = () => {
               className={`p-4 rounded-lg border-2 ${
                 seat.Status === 1
                   ? "border-red-300 bg-red-50"
-                  : state.formData.selectedSeats.includes(seat.SeatName)
+                  : state.formData.selectedSeats.includes(seat.SeatId)
                   ? "border-blue-300 bg-blue-100"
                   : "border-green-300 bg-green-50 hover:bg-green-100"
               }`}
               onClick={() => handleSeatSelect(seat)}
               disabled={seat.Status === 1 && state.formData.holdedOrder === "0"}
             >
-              <div className="text-lg font-bold mb-2">{seat.SeatName}</div>
+              <div className="text-lg font-bold mb-2">{seat.SeatNumber || seat.SeatName}</div>
               <div className="text-sm">
                 {seat.Status === 1 ? "Occupied" : "Available"}
               </div>
@@ -1599,7 +1656,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                 (emp) =>
                   emp.Code?.toString() === state.formData.delBoy.toString()
               )?.EmpName || "N/A",
-            selectedSeats: state.formData.selectedSeats.join(", ") || "N/A",
+            selectedSeats:
+              state.formData.selectedSeats.map(getSeatNumberFromId).join(", ") ||
+              "N/A",
             remarks: state.formData.remarks,
             prefix: state.formData.prefix,
             tokenNo: tokenCounts[state.formData.status]?.nextToken || 1,
@@ -1628,6 +1687,14 @@ const EnhancedPOSSystemWithReceipt = () => {
               </div>
               <div className="text-sm text-gray-600">
                 Order #{order.OrderNo}
+              </div>
+              <div className="text-sm text-gray-600">
+                Seats:{" "}
+                {order.tableInfo?.seats
+                  ?.filter((seat) => seat.Status === 1)
+                  .map((seat) => seat.SeatNumber)
+                  .join(", ") ||
+                  (order.SeatId ? getSeatNumberFromId(order.SeatId) : "N/A")}
               </div>
               <div className="text-sm font-bold text-blue-700">
                 {order.Total.toFixed(2)} AED
