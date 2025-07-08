@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo, useReducer } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useReducer,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import ReceiptTemplate from "./ReceiptTemplate";
 import axios from "../../api/axios";
@@ -181,16 +187,31 @@ const EnhancedPOSSystemWithReceipt = () => {
 
   // Calculate Occupied and Available Seats
   const getSeatCounts = useCallback(
-    (seats) => {
-      const occupiedSeats = seats?.filter((seat) => seat.Status === 1).length || 0;
-      const totalSeats = seats?.length || 0;
+    (table) => {
+      if (!table?.seats)
+        return { occupiedSeats: 0, availableSeats: 0, totalSeats: 0 };
+
+      const occupiedSeatIds = pendingOrders
+        .filter(
+          (order) =>
+            order.TableId === (table.TableId || table.TableID) &&
+            order.Saled === "No"
+        )
+        .map((order) => order.SeatId)
+        .filter((seatId) => seatId !== null);
+
+      const occupiedSeats = table.seats.filter((seat) =>
+        occupiedSeatIds.includes(seat.SeatId)
+      ).length;
+
+      const totalSeats = table.seats.length || 0;
       return {
         occupiedSeats,
         availableSeats: totalSeats - occupiedSeats,
         totalSeats,
       };
     },
-    []
+    [pendingOrders]
   );
 
   // Handlers
@@ -217,7 +238,7 @@ const EnhancedPOSSystemWithReceipt = () => {
   const saveSettings = useCallback(() => {
     localStorage.setItem("restaurantName", restaurantSettings.name);
     localStorage.setItem("restaurantTRN", restaurantSettings.trn);
-    localStorage.setItem("restaurantPhone", restaurantSettings.phone);
+    local - Storage.setItem("restaurantPhone", restaurantSettings.phone);
     localStorage.setItem("restaurantAddress", restaurantSettings.address);
     setShowSettingsModal(false);
   }, [restaurantSettings]);
@@ -417,8 +438,8 @@ const EnhancedPOSSystemWithReceipt = () => {
         time: formatTime(new Date()),
       },
     });
-    setSelectedCartItemId(null);
     setSelectedTable(null);
+    setSelectedCartItemId(null);
   }, [
     generateRandomCustomerId,
     formatDate,
@@ -428,41 +449,55 @@ const EnhancedPOSSystemWithReceipt = () => {
 
   const handleTableSelect = useCallback(
     (table) => {
-      if (table.TableStatus === 1 && state.formData.holdedOrder === "0") {
+      const { availableSeats } = getSeatCounts(table);
+      if (availableSeats === 0 && state.formData.holdedOrder === "0") {
         setError(
-          "This table is occupied. Please select a KOT order or another table."
+          "All seats in this table are occupied. Please select another table."
         );
         return;
       }
+
       setSelectedTable(table);
       setShowTableModal(false);
       setShowSeatModal(true);
     },
-    [state.formData.holdedOrder]
+    [getSeatCounts, state.formData.holdedOrder]
   );
 
   const handleSeatSelect = useCallback(
     (seat) => {
-      if (seat.Status === 1 && state.formData.holdedOrder === "0") {
+      const isSeatOccupied = pendingOrders.some(
+        (order) =>
+          order.SeatId === seat.SeatId &&
+          order.TableId === (selectedTable.TableId || selectedTable.TableID) &&
+          order.Saled === "No" &&
+          order.OrderNo !== state.formData.holdedOrder
+      );
+
+      if (isSeatOccupied && state.formData.holdedOrder === "0") {
         setError(
-          "This seat is already occupied. Please select a KOT order or another seat."
+          "This seat is already occupied by another order. Please select a KOT order or another seat."
         );
         return;
       }
+
       dispatch({
         type: "UPDATE_FORM",
         payload: {
           tableId: selectedTable.TableId || selectedTable.TableID,
           tableNo: selectedTable.TableCode || selectedTable.Code,
           selectedSeats: state.formData.selectedSeats.includes(seat.SeatId)
-            ? state.formData.selectedSeats.filter(
-                (id) => id !== seat.SeatId
-              )
+            ? state.formData.selectedSeats.filter((id) => id !== seat.SeatId)
             : [...state.formData.selectedSeats, seat.SeatId],
         },
       });
     },
-    [selectedTable, state.formData.holdedOrder, state.formData.selectedSeats]
+    [
+      selectedTable,
+      state.formData.holdedOrder,
+      state.formData.selectedSeats,
+      pendingOrders,
+    ]
   );
 
   const confirmSeatSelection = useCallback(() => {
@@ -733,7 +768,9 @@ const EnhancedPOSSystemWithReceipt = () => {
     (seatId) => {
       if (!selectedTable || !selectedTable.seats) return seatId.toString();
       const seat = selectedTable.seats.find((seat) => seat.SeatId === seatId);
-      return seat ? seat.SeatNumber || seat.SeatName || seatId.toString() : seatId.toString();
+      return seat
+        ? seat.SeatNumber || seat.SeatName || seatId.toString()
+        : seatId.toString();
     },
     [selectedTable]
   );
@@ -986,8 +1023,7 @@ const EnhancedPOSSystemWithReceipt = () => {
               {state.formData.status === "Delivery" && (
                 <div className="flex items-end">
                   <button
-                    className="w-full bg-blue-6
-00 text-white px-4 py-2.5 rounded-lg text-sm hover:bg-blue-700"
+                    className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm hover:bg-blue-700"
                     onClick={() => setShowCustomerModal(true)}
                   >
                     Select Customer
@@ -1426,7 +1462,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                         ?.filter((seat) => seat.Status === 1)
                         .map((seat) => seat.SeatNumber)
                         .join(", ") ||
-                        (order.SeatId ? getSeatNumberFromId(order.SeatId) : "N/A")}
+                        (order.SeatId
+                          ? getSeatNumberFromId(order.SeatId)
+                          : "N/A")}
                     </div>
                     <div className="text-sm font-bold text-blue-700">
                       {order.Total.toFixed(2)} AED
@@ -1451,21 +1489,27 @@ const EnhancedPOSSystemWithReceipt = () => {
       >
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-80 overflow-y-auto">
           {tables.map((table) => {
-            const { occupiedSeats, availableSeats, totalSeats } = getSeatCounts(table.seats);
+            const { occupiedSeats, availableSeats, totalSeats } =
+              getSeatCounts(table);
+            const isTableFullyOccupied = availableSeats === 0;
             return (
               <button
-                key={table.TableID}
+                key={table.TableId || table.TableID}
                 className={`p-4 rounded-lg border-2 ${
-                  table.TableStatus === 1
+                  isTableFullyOccupied
                     ? "border-red-300 bg-red-50"
                     : "border-green-300 bg-green-50 hover:bg-green-100"
                 }`}
                 onClick={() => handleTableSelect(table)}
-                disabled={table.TableStatus === 1 && state.formData.holdedOrder === "0"}
+                disabled={
+                  isTableFullyOccupied && state.formData.holdedOrder === "0"
+                }
               >
-                <div className="text-lg font-bold mb-2">T{table.Code}</div>
+                <div className="text-lg font-bold mb-2">
+                  T{table.TableCode || table.Code}
+                </div>
                 <div className="text-sm">
-                  {table.TableStatus === 1 ? "OCCUPIED" : "AVAILABLE"}
+                  {isTableFullyOccupied ? "FULLY OCCUPIED" : "SEATS AVAILABLE"}
                 </div>
                 <div className="text-sm">
                   {availableSeats}/{totalSeats} seats available
@@ -1479,28 +1523,42 @@ const EnhancedPOSSystemWithReceipt = () => {
       <Modal
         isOpen={showSeatModal}
         onClose={() => setShowSeatModal(false)}
-        title={`Select Seats for Table ${selectedTable?.TableCode || selectedTable?.Code}`}
+        title={`Select Seats for Table ${
+          selectedTable?.TableCode || selectedTable?.Code
+        }`}
       >
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-80 overflow-y-auto">
-          {selectedTable?.seats?.map((seat) => (
-            <button
-              key={seat.SeatId}
-              className={`p-4 rounded-lg border-2 ${
-                seat.Status === 1
-                  ? "border-red-300 bg-red-50"
-                  : state.formData.selectedSeats.includes(seat.SeatId)
-                  ? "border-blue-300 bg-blue-100"
-                  : "border-green-300 bg-green-50 hover:bg-green-100"
-              }`}
-              onClick={() => handleSeatSelect(seat)}
-              disabled={seat.Status === 1 && state.formData.holdedOrder === "0"}
-            >
-              <div className="text-lg font-bold mb-2">{seat.SeatNumber || seat.SeatName}</div>
-              <div className="text-sm">
-                {seat.Status === 1 ? "Occupied" : "Available"}
-              </div>
-            </button>
-          ))}
+          {selectedTable?.seats?.map((seat) => {
+            const isSeatOccupied = pendingOrders.some(
+              (order) =>
+                order.SeatId === seat.SeatId &&
+                order.TableId ===
+                  (selectedTable.TableId || selectedTable.TableID) &&
+                order.Saled === "No" &&
+                order.OrderNo !== state.formData.holdedOrder
+            );
+            return (
+              <button
+                key={seat.SeatId}
+                className={`p-4 rounded-lg border-2 ${
+                  isSeatOccupied
+                    ? "border-red-300 bg-red-50"
+                    : state.formData.selectedSeats.includes(seat.SeatId)
+                    ? "border-blue-300 bg-blue-100"
+                    : "border-green-300 bg-green-50 hover:bg-green-100"
+                }`}
+                onClick={() => handleSeatSelect(seat)}
+                disabled={isSeatOccupied && state.formData.holdedOrder === "0"}
+              >
+                <div className="text-lg font-bold mb-2">
+                  {seat.SeatNumber || seat.SeatName}
+                </div>
+                <div className="text-sm">
+                  {isSeatOccupied ? "OCCUPIED" : "AVAILABLE"}
+                </div>
+              </button>
+            );
+          })}
           <div className="col-span-full mt-4">
             <button
               className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm hover:bg-blue-700"
@@ -1657,8 +1715,9 @@ const EnhancedPOSSystemWithReceipt = () => {
                   emp.Code?.toString() === state.formData.delBoy.toString()
               )?.EmpName || "N/A",
             selectedSeats:
-              state.formData.selectedSeats.map(getSeatNumberFromId).join(", ") ||
-              "N/A",
+              state.formData.selectedSeats
+                .map(getSeatNumberFromId)
+                .join(", ") || "N/A",
             remarks: state.formData.remarks,
             prefix: state.formData.prefix,
             tokenNo: tokenCounts[state.formData.status]?.nextToken || 1,
